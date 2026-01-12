@@ -1,0 +1,126 @@
+<div class="w-full h-screen flex items-center justify-center" 
+    x-data="{
+        selectedPivot: {},
+        bShowRegisterPivotModal: false
+    }">
+    <div class="lg:w-[60%] xl:w-[50%] p-10">
+        <div class="flex items-center gap-2 mb-6"
+            x-data="{ open: false, pivots: [] }"
+            x-init="async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
+                        pivots = await res.json();
+                    } catch (err) {
+                        console.error('Failed to load pivots', err);
+                    }
+                }">
+
+            <div class="relative flex-1" x-data="{ open: false }">
+                <button 
+                    id="pivotSelect" 
+                    @click="open = !open"
+                    @click.away="open = false"
+                    class="w-full flex justify-between items-center border rounded px-3 py-1 cursor-pointer bg-white"
+                    type="button">
+                    <span x-text="selectedPivot?.name || 'Select Pivot'"></span>
+                    <img :src="'../icons/chevron_down.svg'" class="w-5" :class="open && 'rotate-180'">
+                </button>
+
+                <div 
+                    x-show="open" 
+                    x-transition
+                    class="absolute z-10 top-full left-0 w-full mt-1 bg-white border border-default-medium rounded-lg shadow-lg"
+                    style="display: none;"
+                >
+                    <ul class="p-2 text-sm font-medium">
+                        <template x-for="pivot in pivots" :key="pivot.id">
+                            <li>
+                                <button 
+                                    @click="selectedPivot = pivot; open = false" 
+                                    class="inline-flex items-center w-full p-2 hover:bg-neutral-tertiary-medium rounded text-left"
+                                    x-text="pivot.name">
+                                </button>
+                            </li>
+                        </template>
+                        
+                        <template x-if="pivots.length === 0">
+                            <li class="p-2 text-gray-400 italic">No pivots found</li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+
+            <button class="self-stretch bg-green-500 text-white px-4 rounded cursor-pointer" @click="bShowRegisterPivotModal = true">
+                <img :src="'../icons/plus.svg'" class="w-5">
+            </button>
+        </div>
+
+        <!-- Start/Stop button -->
+        <button 
+            x-data="{ 
+                get command() { 
+                    return selectedPivot?.status?.state === 'Running' ? 'Stop' : 'Start' 
+                } 
+            }"
+            @click="
+                if(!selectedPivot) return;
+                const response = await fetch(`${API_URL}/api/command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        pivot_id: selectedPivot.id,
+                        command: command
+                    })
+                });
+            "
+            x-text="command"
+            :class="selectedPivot?.status?.state === 'Running' ? 'bg-red-500' : 'bg-blue-500'"
+            class="w-full text-white py-2 rounded mb-6 text-lg font-bold cursor-pointer disabled:opacity-50"
+            :disabled="!selectedPivot">
+        </button>
+
+        <!-- Status cards -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+
+            <div class="bg-white rounded-xl p-4 shadow-sm">
+            <div class="text-sm text-gray-500 mb-1">Wet / Dry</div>
+            <div class="text-2xl font-semibold">Wet</div>
+            </div>
+
+            <div class="bg-white rounded-xl p-4 shadow-sm">
+            <div class="text-sm text-gray-500 mb-1">Auxiliary</div>
+            <div class="text-2xl font-semibold">On</div>
+            </div>
+
+            <div class="bg-white rounded-xl p-4 shadow-sm">
+            <div class="text-sm text-gray-500 mb-1">Direction</div>
+            <div class="text-2xl font-semibold">Forward</div>
+            </div>
+
+            <div class="bg-white rounded-xl p-4 shadow-sm">
+            <div class="text-sm text-gray-500 mb-1">Speed</div>
+            <div class="text-2xl font-semibold">120 RPM</div>
+            </div>
+
+            <div class="bg-white rounded-xl p-4 shadow-sm">
+            <div class="text-sm text-gray-500 mb-1">Pressure</div>
+            <div class="text-2xl font-semibold">80 PSI</div>
+            </div>
+
+            <div class="bg-white rounded-xl p-4 shadow-sm">
+            <div class="text-sm text-gray-500 mb-1">Battery</div>
+            <div class="text-2xl font-semibold">95%</div>
+            </div>
+
+        </div>
+    </div>  
+
+    <div x-data="{
+        get bShow() { return bShowRegisterPivotModal }, 
+        set bShow(val) { bShowRegisterPivotModal = val }
+    }">
+        <register-pivot-modal/>
+    </div>
+</div>
+
+

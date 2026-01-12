@@ -1,0 +1,22 @@
+{
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@tailwindcss/cli": "^4.1.18",
+    "concurrently": "^9.2.1",
+    "serve": "^14.2.5",
+    "tailwindcss": "^4.1.18"
+  },
+  "scripts": {
+    "build:css": "tailwindcss -i input.css -o public/css/app.css --minify",
+    "watch:css": "tailwindcss -i input.css -o public/css/app.css --watch",
+    "serve": "serve public",
+    "backend": "cd ../server && .\\bin\\air.exe",
+    "dev": "concurrently \"npm run watch:css\" \"npm run serve\" \"npm run backend\"",
+    "build": "npm run build:css && npx cap copy && npx cap build android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  }
+}

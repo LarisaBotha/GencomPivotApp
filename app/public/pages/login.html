@@ -1,0 +1,70 @@
+<div x-data="{ bLogin: true }">
+    <div class="w-full h-screen flex items-center justify-center" 
+        x-data="{ 
+            get buttonText() { return this.bLogin ? 'Login' : 'Register' },
+            get onSuccess() { return this.bLogin ? 
+                async (response) => {
+                    const result = await response.json();
+                    if (result.id != '') {user_id = result.id}
+                    loadPage('main');
+                } : 
+                () => {}
+            },
+            onFailure: (err) => {
+                console.error('Request failed', err)
+            },
+            get linkButtonText() { return this.bLogin ? 'Sign up' : 'Login' },
+            onLinkButtonClick: () => { bLogin = !bLogin },
+            get endpoint() { return API_URL + (bLogin ? '/api/login' : '/api/register_user') },
+            fields: bLogin ?  
+                {
+                    'identifier': { label: 'Email or Cell', type: 'text', value: '', errorMsg: '',
+                        validation: [
+                            { 
+                                validate: (val) => {
+                                    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+                                    const isCell = /^\d{10,}$/.test(val);
+                                    return isEmail || isCell || true;
+                                }, 
+                                errorMsg: 'Email or cell number is invalid' 
+                            }
+                        ] 
+                    },
+                    'password': { label: 'Password', type: 'password', value: '', errorMsg: '' }
+                } :
+                {
+                    'name': { label: 'Name', type: 'text', value: '', errorMsg: '' },
+                    'email': { label: 'Email', type: 'text', value: '', errorMsg: '',
+                        validation: [
+                            { 
+                                validate: (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), 
+                                errorMsg: 'Invalid email format' 
+                            }
+                        ], 
+                    },
+                    'cell': { label: 'Cell', type: 'tel', value: '', errorMsg: '',
+                        validation: [
+                            { 
+                                validate: (val) => /^\d{10,}$/.test(val), 
+                                errorMsg: 'Cell must be at least 10 digits' 
+                            }
+                        ], 
+                    },
+                    'password': { label: 'Password', type: 'password', value: '', errorMsg: '',
+                        validation: [
+                            { 
+                                validate: (val) => val.length >= 8, 
+                                errorMsg: 'Password must be at least 8 characters' 
+                            }
+                        ], 
+                    },
+                    'confirm-password': { label: 'Confirm Password', type: 'password', value: '', errorMsg: '', bExclude: true,
+                        
+                    }
+                }
+            
+        }">
+
+        <form-card/>
+    </div>
+</div>

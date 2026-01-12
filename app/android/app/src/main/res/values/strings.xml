@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GencomPivotApp</string>
+    <string name="title_activity_main">GencomPivotApp</string>
+    <string name="package_name">com.gentriccommunications.gencompivotapp</string>
+    <string name="custom_url_scheme">com.gentriccommunications.gencompivotapp</string>
+</resources>

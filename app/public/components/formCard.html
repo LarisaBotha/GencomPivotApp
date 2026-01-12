@@ -1,0 +1,94 @@
+<div 
+    class="lg:w-[40%] xl:w-[30%] bg-white flex flex-col p-10 rounded-lg overflow-hidden shadow-lg gap-7" 
+    @keyup.enter="document.getElementById('submit-button').click()"
+>  
+    <template x-for="(field, key) in fields" :key="key">
+        <div x-show="!field.bHidden" class="flex flex-col gap-2">
+            <label :for="key" class="text-gray-700 font-medium" x-text="field.label"></label>
+            
+            <div class="relative w-full" x-data="{ showPassword: false }">
+                <div class="gap-1">
+                    <input 
+                        :type="field.type === 'password' ? (showPassword ? 'text' : 'password') : field.type" 
+                        :id="key" 
+                        :name="key"
+                        x-model="field.value"
+                        :placeholder="field.placeholder"
+                        class="bg-gray-50 border border-gray-200 rounded-lg w-full px-3 py-2.5 shadow-xs"
+                        required 
+                    />
+
+                    <p class="absolute text-red-500 text-sm" x-if="field.errorMsg != ''" x-text="field.errorMsg"></p>
+                </div>
+
+                <template x-if="field.type === 'password'">
+                    <button 
+                        type="button" 
+                        @click="showPassword = !showPassword" 
+                        class="absolute inset-y-0 right-0 flex items-center pr-4 cursor-pointer text-gray-700 hover:text-gray-900"
+                    >
+                        <img :src="showPassword ? '../icons/eye_open.svg' : '../icons/eye_closed.svg'" class="w-5">
+                    </button>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    <div>
+        <button 
+            id="submit-button"
+            class="button bg-blue-500 rounded-lg w-full px-3 py-2.5 shadow-xs text-gray-50 font-bold cursor-pointer"
+            @click="async () => {
+                let isValid = true;
+                const formDataParams = new URLSearchParams();
+
+                // Reset errors
+                Object.values(fields).forEach(f => f.errorMsg = '');
+
+                // Validate Fields
+                Object.entries(fields).forEach(([key, field]) => {
+                    const value = field.value.trim() || '';
+                    if (field.validation) {
+                        field.validation.forEach(v => {
+                            if (!v.validate(value)) {
+                                field.errorMsg = v.errorMsg;
+                                isValid = false;
+                            }
+                        });
+                    }
+                    // Basic required check
+                    if (!value) {
+                        field.errorMsg = 'This field is required';
+                        isValid = false;
+                    }
+
+                    if (!field.bExclude) {
+                        formDataParams.append(key, value);
+                    }
+                });
+
+                if (!isValid) return;
+
+                // Send Request
+                try {
+                    alert('Params:', formDataParams.toString());
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: formDataParams
+                    });
+
+                    onSuccess(null)                    
+                } catch (err) {
+                    console.error('Network error:', err);
+                }
+            }"
+            x-text="buttonText"
+        >
+        </button>
+    </div>
+
+     <div x-if="linkButtonText != ''" class="w-full flex justify-center">
+        <button class="underline cursor-pointer" x-text="linkButtonText" @click="onLinkButtonClick()"></button>
+    </div>
+</div>
