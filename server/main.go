@@ -17,6 +17,7 @@ func main() {
 	http.HandleFunc("/api/register_user", handleRegisterUser)
 	http.HandleFunc("/api/register_pivot", handleRegisterPivot)
 	http.HandleFunc("/api/get_user_pivots", handleGetUserPivots)
+	http.HandleFunc("/api/pivot_status", handlePivotStatus)
 	http.HandleFunc("/api/command", handleCommand)
 
 	fmt.Println("🚀 Server started on :8080")

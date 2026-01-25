@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -49,12 +50,13 @@ func GetArguments(r *http.Request, dst any) error {
 		field := t.Field(i)
 
 		key := field.Tag.Get("json")
-		if key == "" || key == "-" {
+		if key == "" || key == "_" {
 			key = strings.ToLower(field.Name)
 		}
 
 		var val string
 		if r.Method == http.MethodGet {
+			log.Println("UUUUUUUUUU: ", key)
 			val = r.URL.Query().Get(key)
 		} else {
 			val = r.PostFormValue(key)

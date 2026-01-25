@@ -18,7 +18,7 @@
                         required 
                     />
 
-                    <p class="absolute text-red-500 text-sm" x-if="field.errorMsg != ''" x-text="field.errorMsg"></p>
+                    <p class="absolute text-red-500 text-sm" x-show="field.errorMsg != ''" x-text="field.errorMsg"></p>
                 </div>
 
                 <template x-if="field.type === 'password'">
@@ -88,7 +88,9 @@
         </button>
     </div>
 
-     <div x-if="linkButtonText != ''" class="w-full flex justify-center">
-        <button class="underline cursor-pointer" x-text="linkButtonText" @click="onLinkButtonClick()"></button>
-    </div>
+    <template x-if="this.linkButtonText">
+        <div class="w-full flex justify-center">
+            <button class="underline cursor-pointer" x-text="linkButtonText" @click="onLinkButtonClick()"></button>
+        </div>
+    </template>
 </div>

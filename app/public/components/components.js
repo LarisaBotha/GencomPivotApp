@@ -64,3 +64,25 @@ class StatusCard extends HTMLElement {
 }
 
 customElements.define('status-card', StatusCard);
+
+class PieChart extends HTMLElement {
+  constructor() {
+    super();
+  }
+
+  async connectedCallback() {
+    const filePath = '/components/pieChart.html';
+
+    try {
+      const response = await fetch(filePath);
+      const html = await response.text();
+      
+      this.outerHTML = html;
+      
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  }
+}
+
+customElements.define('pie-chart', PieChart);

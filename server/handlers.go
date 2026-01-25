@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"time"
@@ -184,7 +185,7 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 
 	// Decode Body
 	var body struct {
-		Id      string  `json:"pivot_id"`
+		PivotId string  `json:"pivot_id"`
 		Command string  `json:"command"`
 		Payload *string `json:"payload"`
 	}
@@ -200,11 +201,57 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 
 	// Insert (created_at is automatically populated)
 	if _, err := DB.Exec(r.Context(), `INSERT INTO pivot_command_queue (pivot_id, command, payload) VALUES ($1, $2, $3);`,
-		body.Id, body.Command, body.Payload); err != nil {
+		body.PivotId, body.Command, body.Payload); err != nil {
 		writeText(w, http.StatusInternalServerError, "Failed to queue command")
 		return
 	}
 
 	// Success
 	w.WriteHeader(http.StatusOK)
+}
+
+func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
+
+	// Restrict to GET
+	if r.Method != http.MethodGet {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Decode Body
+	var args struct {
+		PivotId string `json:"pivot_id"`
+	}
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid arguments")
+		return
+	}
+
+	// Fetch Status
+	var pivotStatus struct {
+		PositionDeg float64 `db:"position_deg"`
+		SpeedPct    float64 `db:"speed_pct"`
+		Direction   string  `db:"direction"`
+		Wet         bool    `db:"wet"`
+		Status      string  `db:"status"`
+		Battery     float64 `db:"battery_pct"`
+	}
+	err := DB.QueryRow(r.Context(), `SELECT position_deg, speed_pct, direction::text, wet, status::text, battery_pct
+        FROM pivot_status
+        WHERE pivot_id=$1`,
+		args.PivotId).Scan(
+		&pivotStatus.PositionDeg,
+		&pivotStatus.SpeedPct,
+		&pivotStatus.Direction,
+		&pivotStatus.Wet,
+		&pivotStatus.Status,
+		&pivotStatus.Battery)
+	if err != nil {
+		log.Println(err)
+		writeText(w, http.StatusNotFound, "Pivot Not Found")
+		return
+	}
+
+	// Success
+	writeJSON(w, http.StatusOK, pivotStatus)
 }

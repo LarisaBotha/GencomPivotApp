@@ -79,40 +79,42 @@
             :disabled="!selectedPivot">
         </button>
 
+        <div class="w-full flex items-center justify-center">
+            <pie-chart></pie-chart>
+        </div>
+        
         <!-- Status cards -->
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div 
+            x-data="{ 
+                statusData: {},
+                formatLabel(key) {
+                    return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                }
+            }" 
+            x-effect="
+                if (selectedPivot?.id) {
+                    try {
+                        let res = await fetch(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
+                        if (res.ok) {
+                            statusData = await res.json();
+                        }
+                    } catch(err) {
+                        console.error('Status fetch error:', err);
+                    }
+                }
+            "
+            class="grid grid-cols-2 md:grid-cols-3 gap-4">
 
-            <div class="bg-white rounded-xl p-4 shadow-sm">
-            <div class="text-sm text-gray-500 mb-1">Wet / Dry</div>
-            <div class="text-2xl font-semibold">Wet</div>
-            </div>
-
-            <div class="bg-white rounded-xl p-4 shadow-sm">
-            <div class="text-sm text-gray-500 mb-1">Auxiliary</div>
-            <div class="text-2xl font-semibold">On</div>
-            </div>
-
-            <div class="bg-white rounded-xl p-4 shadow-sm">
-            <div class="text-sm text-gray-500 mb-1">Direction</div>
-            <div class="text-2xl font-semibold">Forward</div>
-            </div>
-
-            <div class="bg-white rounded-xl p-4 shadow-sm">
-            <div class="text-sm text-gray-500 mb-1">Speed</div>
-            <div class="text-2xl font-semibold">120 RPM</div>
-            </div>
-
-            <div class="bg-white rounded-xl p-4 shadow-sm">
-            <div class="text-sm text-gray-500 mb-1">Pressure</div>
-            <div class="text-2xl font-semibold">80 PSI</div>
-            </div>
-
-            <div class="bg-white rounded-xl p-4 shadow-sm">
-            <div class="text-sm text-gray-500 mb-1">Battery</div>
-            <div class="text-2xl font-semibold">95%</div>
-            </div>
+            <template x-for="(value, key) in statusData" :key="key">
+                <template x-if="key !== 'pivot_id' && key !== 'id'">
+                    <div x-data="{heading: formatLabel(key), body: value}">
+                        <status-card></status-card>
+                    </div>
+                </template>
+            </template>
 
         </div>
+
     </div>  
 
     <div x-data="{

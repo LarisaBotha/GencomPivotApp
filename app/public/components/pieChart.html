@@ -1,0 +1,271 @@
+<div
+  x-data="{
+    width: 0,
+    height: 0,
+    dragBallRadius: 6,
+    get padding() { return this.dragBallRadius + 8 },
+    get r() { return (Math.min(this.width, this.height) - this.padding*2) / 2 },
+    get centre() { return this.r + this.padding },
+    balls: {},
+    draggingId: null,
+    activeSection: null,
+    get activeSectionRadius() { return this.r * 1.01 },
+    sections: [],
+    colours: ['#dc2626', '#fcd34d', '#9333ea', '#fb923c', '#4f46e5', '#16a34a'],
+    maxSections: 6,
+
+    initChart() {
+      const rect = this.$refs.svg.getBoundingClientRect()
+      this.width = rect.width
+      this.height = rect.height
+      window.addEventListener('mousemove', this.onMove.bind(this))
+      window.addEventListener('mouseup', this.stopDrag.bind(this))
+
+      let id = this.addBallAtAngle(1.5 * Math.PI)
+      this.updateBall(id)
+      let section = this.addSection(id, id)
+      this.updateSection(section)
+    },
+
+    add() {
+      const lastSection = this.sections[this.sections.length-1]
+      const lastSectionStart = this.balls[lastSection.startId]
+      const lastSectionEnd = this.balls[lastSection.endId]
+      
+      const sectionAngle = this.normalizeAngle(Math.abs(lastSectionEnd.angle - lastSectionStart.angle)) / 2
+      const startAngle = this.normalizeAngle(lastSectionStart.angle + sectionAngle)
+      const startId = this.addBallAtAngle(startAngle)
+      this.updateBall(startId)
+
+      const endId = lastSection.endId
+      let section = this.addSection(startId, endId)
+      this.updateSection(section)
+
+      this.sections[this.sections.length-2].endId = startId;
+      this.updateSection(this.sections[this.sections.length-2])
+    },
+
+    addSection(startId, endId) {
+      const colour = this.colours[this.sections.length + (this.colours.length - this.maxSections)]
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      let section = { startId, endId, colour, el }
+      el.setAttribute('fill', colour)
+      el.setAttribute('opacity', '0.6')
+      el.style.cursor = 'pointer'
+      el.addEventListener('click', (e) => {
+        this.updateActiveSection(section) 
+      })
+      this.$refs.svg.insertBefore(el, this.$refs.svg.children[2])
+      this.sections.push(section)
+      return section
+    },
+
+    updateActiveSection(section) {
+      if (this.activeSection != null ){
+        this.activeSection.el.removeAttribute('filter')
+        this.activeSection.el.setAttribute('opacity', '0.7')
+        this.updateSection(this.activeSection)
+      }
+
+      if (this.activeSection && section && (this.activeSection.el === section.el)){
+        this.activeSection = null
+        return
+      }
+
+      section.el.setAttribute('filter', 'url(#activeShadow)')
+      section.el.setAttribute('opacity', '1')
+      this.updateSection(section, this.activeSectionRadius)
+      this.activeSection = section;
+    },
+
+    circlePositionFromAngle(angle, radius) {
+      return {
+        x : this.centre + Math.cos(angle) * radius, 
+        y : this.centre + Math.sin(angle) * radius
+      }
+    },
+
+    drawSector(start, end, radius = this.r) {
+      const dDiff = this.normalizeAngle(end - start)
+
+      if (dDiff === 2 * Math.PI) {
+        return `
+          M ${this.centre},${this.centre}
+          m -${radius},0
+          a ${radius},${radius} 0 1,0 ${radius*2},0
+          a ${radius},${radius} 0 1,0 -${radius*2},0
+        `
+      }
+
+      const { x: StartX, y: StartY } = this.circlePositionFromAngle(start, radius)
+      const { x: EndX, y: EndY } = this.circlePositionFromAngle(end, radius)
+
+      return `
+        M ${this.centre},${this.centre}
+        L ${StartX},${StartY}
+        A ${radius},${radius} 0 ${dDiff > Math.PI ? 1 : 0} 1 ${EndX},${EndY}
+        Z
+      `
+    },
+
+    addBallAtAngle(angle) {
+      const id = crypto.randomUUID()
+
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+      el.setAttribute('r', this.dragBallRadius)
+      el.setAttribute('fill', '#2563eb')
+      el.style.cursor = 'pointer'
+
+      el.addEventListener('mousedown', e => {
+        e.preventDefault()
+        this.draggingId = id
+      })
+
+      this.$refs.svg.appendChild(el)
+      this.balls[id] = {angle, el}
+      return id;
+    },
+
+    updateBall(ballId) {
+        let ball = this.balls[ballId]
+
+        const x = this.centre + Math.cos(ball.angle) * this.r
+        const y = this.centre + Math.sin(ball.angle) * this.r
+      
+        ball.el.setAttribute('cx', x)
+        ball.el.setAttribute('cy', y) 
+    },
+
+    updateSection(section, radius = this.r) {
+      section.el.setAttribute('d', this.drawSector(this.balls[section.startId].angle, this.balls[section.endId].angle, radius)) 
+    },
+
+    normalizeAngle(a) {
+      let normalised = (a + Math.PI * 2) % (Math.PI * 2)
+      return normalised === 0 ? Math.PI * 2 : normalised
+    },
+
+    onMove(e) {
+        if (!this.draggingId) return
+
+        const svg = this.$refs.svg
+        const rect = svg.getBoundingClientRect()
+
+        const mx = e.clientX - rect.left
+        const my = e.clientY - rect.top
+
+        const b = this.balls[this.draggingId]
+        if (!b) return
+
+        b.angle = this.normalizeAngle(Math.atan2(my - this.centre, mx - this.centre))
+
+        b.x = this.centre + Math.cos(b.angle) * this.r
+        b.y = this.centre + Math.sin(b.angle) * this.r
+
+        this.updateBall(this.draggingId)
+
+        // TODO: Consider performance
+        const matchingSections = this.sections.filter(
+            section => section.startId === this.draggingId || section.endId === this.draggingId
+        )
+        matchingSections.forEach((section) => {
+           this.updateSection(section) 
+        })
+    },
+
+    stopDrag() {
+      this.draggingId = null
+    }
+  }"
+  x-init="initChart()"
+  style="user-select:none; aspect-ratio: 1;"
+>
+  <svg
+    x-ref="svg"
+    class="w-full h-full"
+  >
+
+    <defs>
+      <filter id="activeShadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow
+          dx="0"
+          dy="3"
+          stdDeviation="4"
+          flood-color="rgba(0,0,0,0.4)"
+        />
+      </filter>
+    </defs>
+
+    <circle
+      :cx="centre"
+      :cy="centre"
+      :r="r"
+      fill="#d6d3d1"
+      />
+  </svg>
+
+  <div class="flex justify-between">
+    <div>
+      <template x-if="activeSection != null">
+        <button 
+          @click="() => {
+            const centerAngle = normalizeAngle(balls[activeSection.startId].angle + ((balls[activeSection.endId].angle - balls[activeSection.startId].angle + 2*Math.PI) % (2*Math.PI)) / 2)
+            const mergeBallId = addBallAtAngle(centerAngle)
+            updateBall(mergeBallId)
+
+            const prevSection = sections.find(
+              section => section.endId === activeSection.startId
+            )
+            prevSection.endId = mergeBallId
+            updateSection(prevSection)
+            const nextSection = sections.find(
+              section => section.startId === activeSection.endId
+            )
+            nextSection.startId = mergeBallId
+            updateSection(nextSection)
+
+            balls[activeSection.startId].el.remove()
+            delete balls[activeSection.startId]
+            balls[activeSection.endId].el.remove()
+            delete balls[activeSection.endId]
+
+            sections = sections.filter(
+              section => section.el !== activeSection.el
+            )
+            colours.push(activeSection.colour)
+            activeSection.el.remove()
+            activeSection = null;
+          }"
+          class="text-white text-sm p-2 rounded font-bold cursor-pointer bg-red-500">
+          Delete Section 
+        </button>
+      </template>
+    </div>
+
+    <button 
+      :disabled = "sections.length == maxSections"
+      @click="() => {
+        const lastSection = sections[sections.length-1]
+        const lastSectionStart = balls[lastSection.startId]
+        const lastSectionEnd = balls[lastSection.endId]
+        
+        const sectionAngle = normalizeAngle(Math.abs(lastSectionEnd.angle - lastSectionStart.angle)) / 2
+        const startAngle = normalizeAngle(lastSectionStart.angle + sectionAngle)
+        const startId = addBallAtAngle(startAngle)
+        updateBall(startId)
+
+        const endId = lastSection.endId
+        let section = addSection(startId, endId)
+        updateSection(section)
+
+        sections[sections.length-2].endId = startId;
+        updateSection(sections[sections.length-2])
+      }"
+      class="text-white text-sm p-2 rounded font-bold cursor-pointer bg-blue-500 disabled:opacity-50 disabled:cursor-auto">
+      Add Section
+    </button>
+
+  </div>
+
+  
+</div>
