@@ -13,7 +13,7 @@
   <body class="w-full h-screen" 
       x-data="{ 
         user_id: '', 
-        currentView: 'login',
+        currentView: 'main',
         viewContent: '',
         
         async loadPage(pageName) {
@@ -30,7 +30,7 @@
           }
         }
       }" 
-      x-init="loadPage('login')"> 
+      x-init="loadPage(currentView)"> 
     <div id="content" class="w-full h-screen" x-html="viewContent"></div>
 
     <script src="components/components.js"></script>

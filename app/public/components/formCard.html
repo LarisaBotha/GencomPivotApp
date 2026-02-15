@@ -78,13 +78,13 @@
                     });
 
                     if (response.status >= 200 && response.status < 300) {
-                        onSuccess()
+                        onSuccess(response)
                     } else {
                         let err = await response.json()
-                        onFailure(err)
+                        if (this.onFailure) onFailure(err)
                     }                     
                 } catch (err) {
-                    onFailure(err)
+                    if (this.onFailure) onFailure(err)
                 }
             }"
             x-text="buttonText"
@@ -92,7 +92,7 @@
         </button>
     </div>
 
-    <template x-if="linkButtonText">
+    <template x-if="$data.linkButtonText">
         <div class="w-full flex justify-center">
             <button class="underline cursor-pointer" x-text="linkButtonText" @click="onLinkButtonClick()"></button>
         </div>

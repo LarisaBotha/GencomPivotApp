@@ -1,5 +1,4 @@
 DROP TABLE IF EXISTS pivot_command_queue;
-DROP TABLE IF EXISTS pivot_history;
 DROP TABLE IF EXISTS pivot_status;
 DROP TABLE IF EXISTS pivots;
 DROP TABLE IF EXISTS users;
@@ -48,6 +47,19 @@ CREATE TABLE pivot_status (
     battery_pct FLOAT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE OR REPLACE FUNCTION create_pivot_status()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO pivot_status (pivot_id) VALUES (NEW.id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_create_pivot_status
+AFTER INSERT ON pivots
+FOR EACH ROW
+EXECUTE FUNCTION create_pivot_status();
 
 -- CREATE INDEX idx_pivot_command_queue_pivot_id ON pivot_command_queue(pivot_id);
 -- CREATE INDEX idx_pivot_command_queue_executed ON pivot_command_queue(acknowledged);

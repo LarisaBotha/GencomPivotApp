@@ -94,7 +94,7 @@ func handleRegisterUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Success
-	w.WriteHeader(http.StatusCreated)
+	writeHeader(w, http.StatusCreated)
 }
 
 func handleRegisterPivot(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +130,7 @@ func handleRegisterPivot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Success
-	w.WriteHeader(http.StatusCreated)
+	writeHeader(w, http.StatusCreated)
 }
 
 func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {

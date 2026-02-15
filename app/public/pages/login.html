@@ -1,5 +1,5 @@
 <div x-data="{ 
-    bLogin: false, 
+    bLogin: true, 
     registerFields: {
         'name': { label: 'Name', type: 'text', value: '', errorMsg: '' },
         'email': { label: 'Email', type: 'text', value: '', errorMsg: '',
@@ -57,7 +57,6 @@
                 } : 
                 () => {
                     loginFields.identifier.value = registerFields.email.value;
-                    alert(registerFields.email.value)
                     bLogin = true;
                 }
             },

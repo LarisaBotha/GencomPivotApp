@@ -9,13 +9,17 @@ import (
 	"strings"
 )
 
-func writeResponse(w http.ResponseWriter, status int, contentType string, data []byte) {
+func writeHeader(w http.ResponseWriter, status int) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(status)
+}
+
+func writeResponse(w http.ResponseWriter, status int, contentType string, data []byte) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Connection", "close")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 
-	w.WriteHeader(status)
+	writeHeader(w, status)
 	_, _ = w.Write(data)
 }
 
@@ -56,7 +60,6 @@ func GetArguments(r *http.Request, dst any) error {
 
 		var val string
 		if r.Method == http.MethodGet {
-			log.Println("UUUUUUUUUU: ", key)
 			val = r.URL.Query().Get(key)
 		} else {
 			val = r.PostFormValue(key)
