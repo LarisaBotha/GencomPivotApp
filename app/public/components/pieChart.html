@@ -27,24 +27,6 @@
       this.updateSection(section)
     },
 
-    add() {
-      const lastSection = this.sections[this.sections.length-1]
-      const lastSectionStart = this.balls[lastSection.startId]
-      const lastSectionEnd = this.balls[lastSection.endId]
-      
-      const sectionAngle = this.normalizeAngle(Math.abs(lastSectionEnd.angle - lastSectionStart.angle)) / 2
-      const startAngle = this.normalizeAngle(lastSectionStart.angle + sectionAngle)
-      const startId = this.addBallAtAngle(startAngle)
-      this.updateBall(startId)
-
-      const endId = lastSection.endId
-      let section = this.addSection(startId, endId)
-      this.updateSection(section)
-
-      this.sections[this.sections.length-2].endId = startId;
-      this.updateSection(this.sections[this.sections.length-2])
-    },
-
     addSection(startId, endId) {
       const colour = this.colours[this.sections.length + (this.colours.length - this.maxSections)]
       const el = document.createElementNS('http://www.w3.org/2000/svg', 'path')
@@ -57,6 +39,23 @@
       })
       this.$refs.svg.insertBefore(el, this.$refs.svg.children[2])
       this.sections.push(section)
+
+
+      const startAngle = this.balls[startId].angle
+      const endAngle = this.balls[endId].angle
+      const centerAngle = this.normalizeAngle(startAngle + ((endAngle - startAngle + 2*Math.PI) % (2*Math.PI)) / 2)
+      const x = this.centre + Math.cos(centerAngle) * this.r
+      const y = this.centre + Math.sin(centerAngle) * this.r
+
+      const card = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject')
+      card.setAttribute('x', x - 20) // center it
+      card.setAttribute('y', y - 12)
+      card.setAttribute('width', 40)
+      card.setAttribute('height', 24)
+      card.innerHTML = `<div class='bg-white text-black rounded-full text-xs flex items-center justify-center shadow'>47</div>`
+
+      this.$refs.svg.appendChild(card)
+
       return section
     },
 

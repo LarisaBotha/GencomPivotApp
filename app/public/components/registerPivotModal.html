@@ -1,6 +1,6 @@
 <div x-show="bShow" 
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4"
-    @click="bShow = false"
+    @click.self="bShow = false"
     x-data="{ 
         buttonText: 'Register',
         endpoint: API_URL + '/api/register_pivot',

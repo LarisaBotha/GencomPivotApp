@@ -12,7 +12,7 @@
 
   <body class="w-full h-screen" 
       x-data="{ 
-        user_id: 'afca4973-a1cc-4007-be7b-f6a883aa5ce7', 
+        user_id: '', 
         currentView: 'login',
         viewContent: '',
         
@@ -30,7 +30,7 @@
           }
         }
       }" 
-      x-init="loadPage('main')"> 
+      x-init="loadPage('login')"> 
     <div id="content" class="w-full h-screen" x-html="viewContent"></div>
 
     <script src="components/components.js"></script>

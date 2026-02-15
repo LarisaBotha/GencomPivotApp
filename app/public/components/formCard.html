@@ -71,16 +71,20 @@
 
                 // Send Request
                 try {
-                    alert('Params:', formDataParams.toString());
                     const response = await fetch(endpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
                         body: formDataParams
                     });
 
-                    onSuccess(null)                    
+                    if (response.status >= 200 && response.status < 300) {
+                        onSuccess()
+                    } else {
+                        let err = await response.json()
+                        onFailure(err)
+                    }                     
                 } catch (err) {
-                    console.error('Network error:', err);
+                    onFailure(err)
                 }
             }"
             x-text="buttonText"
@@ -88,7 +92,7 @@
         </button>
     </div>
 
-    <template x-if="this.linkButtonText">
+    <template x-if="linkButtonText">
         <div class="w-full flex justify-center">
             <button class="underline cursor-pointer" x-text="linkButtonText" @click="onLinkButtonClick()"></button>
         </div>
