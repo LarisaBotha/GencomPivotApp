@@ -26,3 +26,7 @@
 - loading 
 - merge pivot and pivot_status tables
 - android app signing for release
+- api documentation
+- integrated pie chart
+- modernise ui
+- only allow editting of one section, implement on change to persist

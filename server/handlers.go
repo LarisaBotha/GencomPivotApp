@@ -17,7 +17,7 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to Post
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -56,7 +56,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 func handleRegisterUser(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to Post
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -100,7 +100,7 @@ func handleRegisterUser(w http.ResponseWriter, r *http.Request) {
 func handleRegisterPivot(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to Post
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -136,7 +136,7 @@ func handleRegisterPivot(w http.ResponseWriter, r *http.Request) {
 func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to Get
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -178,7 +178,7 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 func handleCommand(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to Post
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -213,7 +213,7 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to GET
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}

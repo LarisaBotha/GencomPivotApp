@@ -10,7 +10,7 @@
     "build:css": "tailwindcss -i input.css -o public/css/app.css --minify",
     "watch:css": "tailwindcss -i input.css -o public/css/app.css --watch",
     "serve": "serve public",
-    "backend": "cd ../server && .\\bin\\air.exe",
+    "backend": "cd ../server && air",
     "dev": "concurrently \"npm run watch:css\" \"npm run serve\" \"npm run backend\"",
     "build": "npm run build:css && npx cap copy && npx cap run android"
   },
