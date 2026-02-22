@@ -21,8 +21,8 @@
 - Save logged in user? Sessions? Jwt?
 - Failed login message? Loading button with feedback?
 - Component.js must automatically create the components in the directory
-- Figure out pivot status initialization
 - Save credentials
 - local storage for last selected pivot
 - loading 
 - merge pivot and pivot_status tables
+- android app signing for release
