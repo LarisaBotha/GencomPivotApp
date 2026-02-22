@@ -1,3 +1,12 @@
 [tools]
 go = "1.25.5"
+java = "21"
 node = "25.2.1"
+
+[env]
+ANDROID_HOME = 'C:\Users\laris\AppData\Local\Android\Sdk'
+
+_.path = [
+  '{{env.ANDROID_HOME}}\platform-tools',
+  '{{env.ANDROID_HOME}}\cmdline-tools\latest\bin'
+]
