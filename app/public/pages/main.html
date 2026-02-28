@@ -1,19 +1,21 @@
 <div class="w-full h-screen flex items-center justify-center" 
     x-data="{
+        pivots: [],
         selectedPivot: {},
-        bShowRegisterPivotModal: false
-    }">
+        bShowRegisterPivotModal: false,
+        async fetchPivots() {
+            try {
+                const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
+                let data = await res.json();
+                if (data) this.pivots = data;
+            } catch (err) {
+                console.error('Failed to load pivots', err);
+            }
+        }
+    }"
+    x-init="fetchPivots">
     <div class="lg:w-[60%] xl:w-[50%] p-10">
-        <div class="flex items-center gap-2 mb-6"
-            x-data="{ open: false, pivots: [] }"
-            x-init="async () => {
-                    try {
-                        const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
-                        pivots = await res.json();
-                    } catch (err) {
-                        console.error('Failed to load pivots', err);
-                    }
-                }">
+        <div class="flex items-center gap-2 mb-6">
 
             <div class="relative flex-1" x-data="{ open: false }">
                 <button 
@@ -50,7 +52,10 @@
                 </div>
             </div>
 
-            <button class="self-stretch bg-green-500 text-white px-4 rounded cursor-pointer" @click="bShowRegisterPivotModal = true">
+            <button 
+                class="self-stretch bg-green-500 text-white px-4 rounded cursor-pointer"
+                @click="bShowRegisterPivotModal = true"
+            >
                 <img :src="'../icons/plus.svg'" class="w-5">
             </button>
         </div>
@@ -79,7 +84,13 @@
             :disabled="!selectedPivot">
         </button>
 
-        <div class="w-full flex items-center justify-center py-5">
+        <div 
+            x-data="{
+                onChange: () => {
+                    console.log('hello')
+                }
+            }"
+            class="w-full flex items-center justify-center py-5">
             <pie-chart></pie-chart>
         </div>
         
@@ -89,20 +100,20 @@
                 statusData: {},
                 formatLabel(key) {
                     return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                }
-            }" 
-            x-effect="
-                if (selectedPivot?.id) {
+                },
+                async fetchPivotStatus() {
+                    if (!selectedPivot?.id) return;
                     try {
                         let res = await fetch(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
                         if (res.ok) {
-                            statusData = await res.json();
+                            this.statusData = await res.json();
                         }
                     } catch(err) {
                         console.error('Status fetch error:', err);
                     }
                 }
-            "
+            }" 
+            x-effect="fetchPivotStatus()"
             class="grid grid-cols-2 md:grid-cols-3 gap-4">
 
             <template x-for="(value, key) in statusData" :key="key">
@@ -120,7 +131,11 @@
     <div x-data="{
         get bShow() { return bShowRegisterPivotModal }, 
         set bShow(val) { bShowRegisterPivotModal = val }
-    }">
+    }"
+    @success="
+        bShow = false;
+        fetchPivots();
+    ">
         <register-pivot-modal/>
     </div>
 </div>

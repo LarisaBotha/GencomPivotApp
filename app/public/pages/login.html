@@ -67,7 +67,9 @@
             onLinkButtonClick() { bLogin = !bLogin; },
             get endpoint() { return API_URL + (bLogin ? '/api/login' : '/api/register_user') },
             get fields() { return bLogin ? loginFields : registerFields }
-        }">
+        }"
+        @success="onSuccess($event.detail)"
+        @failure="onFailure($event.detail)">
 
         <form-card/>
     </div>

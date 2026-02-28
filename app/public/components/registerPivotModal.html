@@ -4,9 +4,6 @@
     x-data="{ 
         buttonText: 'Register',
         endpoint: API_URL + '/api/register_pivot',
-        onSuccess: (res) => {
-            bShow = false;
-        },
         fields: {
             'name': { label: 'Name', type: 'text', value: '', errorMsg: '' },
             'imei': { label: 'Gencom IMEI', type: 'text', value: '', errorMsg: '' },

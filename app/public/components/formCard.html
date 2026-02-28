@@ -78,13 +78,13 @@
                     });
 
                     if (response.status >= 200 && response.status < 300) {
-                        onSuccess(response)
+                        $dispatch('success', response)
                     } else {
                         let err = await response.json()
-                        if (this.onFailure) onFailure(err)
+                        $dispatch('failure', err)
                     }                     
                 } catch (err) {
-                    if (this.onFailure) onFailure(err)
+                    $dispatch('failure', err)
                 }
             }"
             x-text="buttonText"

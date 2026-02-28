@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"time"
+	"encoding/json"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -228,15 +229,31 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Status
-	var pivotStatus struct {
-		PositionDeg float64 `db:"position_deg"`
-		SpeedPct    float64 `db:"speed_pct"`
-		Direction   string  `db:"direction"`
-		Wet         bool    `db:"wet"`
-		Status      string  `db:"status"`
-		Battery     float64 `db:"battery_pct"`
+	type SpeedSection struct {
+		SpeedPct float64 `json:"speed_pct" db:"speed_pct"`
+		Label    string  `json:"label" db:"label"`
+		Angle    float64 `json:"angle" db:"angle"`
 	}
-	err := DB.QueryRow(r.Context(), `SELECT position_deg, speed_pct, direction::text, wet, status::text, battery_pct
+
+	var pivotStatus struct {
+		PositionDeg   float64        `json:"position_deg" db:"position_deg"`
+		SpeedPct      float64        `json:"speed_pct" db:"speed_pct"`
+		Direction     string         `json:"direction" db:"direction"`
+		Wet           bool           `json:"wet" db:"wet"`
+		Status        string         `json:"status" db:"status"`
+		Battery       float64        `json:"battery_pct" db:"battery_pct"`
+		SpeedSections []SpeedSection `json:"speed_sections" db:"speed_sections"`
+	}
+	var sectionsJSON []byte
+	err := DB.QueryRow(r.Context(), 
+		`SELECT 
+			position_deg, 
+			speed_pct, 
+			direction::text, 
+			wet, 
+			status::text, 
+			battery_pct, 
+			COALESCE(to_jsonb(speed_sections), '[]'::jsonb)
         FROM pivot_status
         WHERE pivot_id=$1`,
 		args.PivotId).Scan(
@@ -245,11 +262,22 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 		&pivotStatus.Direction,
 		&pivotStatus.Wet,
 		&pivotStatus.Status,
-		&pivotStatus.Battery)
+		&pivotStatus.Battery,
+		&sectionsJSON)
+
+	log.Println("LARISA", sectionsJSON);
 	if err != nil {
 		log.Println(err)
 		writeText(w, http.StatusNotFound, "Pivot Not Found")
 		return
+	}
+
+	if len(sectionsJSON) > 0 {
+		if err := json.Unmarshal(sectionsJSON, &pivotStatus.SpeedSections); err != nil {
+			log.Println(err)
+			writeText(w, http.StatusInternalServerError, "Error unmarshaling sections")
+			return
+		}
 	}
 
 	// Success

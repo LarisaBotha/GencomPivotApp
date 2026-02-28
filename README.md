@@ -29,4 +29,6 @@
 - api documentation
 - integrated pie chart
 - modernise ui
-- only allow editting of one section, implement on change to persist
+- implement on change to persist
+- min pie chart angle
+- ball angles while dragging
