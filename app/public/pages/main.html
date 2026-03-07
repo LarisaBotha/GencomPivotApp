@@ -6,8 +6,10 @@
         async fetchPivots() {
             try {
                 const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
-                let data = await res.json();
-                if (data) this.pivots = data;
+                if (res.ok) {
+                    let data = await res.json();
+                    if (data) this.pivots = data;
+                }
             } catch (err) {
                 console.error('Failed to load pivots', err);
             }
@@ -80,17 +82,33 @@
             "
             x-text="command"
             :class="selectedPivot?.status?.state === 'Running' ? 'bg-red-500' : 'bg-blue-500'"
-            class="w-full text-white py-2 rounded mb-6 text-lg font-bold cursor-pointer disabled:opacity-50"
+            class="w-full text-white py-2 rounded text-lg font-bold cursor-pointer disabled:opacity-50"
             :disabled="!selectedPivot">
         </button>
 
         <div 
             x-data="{
-                onChange: () => {
-                    console.log('hello')
+                sectionData: [],
+                async pivotSpeedSections() {
+                    if (!selectedPivot?.id) return;
+                    try {
+                        let res = await fetch(`${API_URL}/api/pivot_speed_sections?pivot_id=${selectedPivot.id}`, {
+                            method: 'GET'
+                            // headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
+                            // body: formDataParams
+                        });
+                        if (res.ok) {
+                            let data = await res.json();
+                            if (data) this.sections = data;
+                        }
+                    } catch(err) {
+                        console.error('Status fetch error:', err);
+                    }
                 }
             }"
-            class="w-full flex items-center justify-center py-5">
+            x-effect="pivotSpeedSections()"
+            @change="console.log('hello')"
+            class="w-full max-h-[40%] flex items-center justify-center">
             <pie-chart></pie-chart>
         </div>
         
@@ -106,7 +124,8 @@
                     try {
                         let res = await fetch(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
                         if (res.ok) {
-                            this.statusData = await res.json();
+                            let data = await res.json();
+                            if (data) this.statusData = data;
                         }
                     } catch(err) {
                         console.error('Status fetch error:', err);
@@ -114,7 +133,7 @@
                 }
             }" 
             x-effect="fetchPivotStatus()"
-            class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            class="grid grid-cols-2 md:grid-cols-3 gap-4 pt-5">
 
             <template x-for="(value, key) in statusData" :key="key">
                 <template x-if="key !== 'pivot_id' && key !== 'id'">

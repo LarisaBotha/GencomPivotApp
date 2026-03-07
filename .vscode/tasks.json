@@ -4,7 +4,9 @@
     {
       "label": "openBrowser",
       "type": "shell",
-      "command": "start http://localhost:3000",
+      "windows": {
+        "command": "start msedge http://localhost:3000"
+      },
       "problemMatcher": []
     }
   ]

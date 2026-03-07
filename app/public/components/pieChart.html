@@ -81,9 +81,11 @@
 
       section.el.setAttribute('filter', 'url(#activeShadow)')
       section.el.setAttribute('opacity', '0.9')
-      this.balls[section.startId].el.setAttribute('opacity', '1')
-      this.balls[section.endId].el.setAttribute('opacity', '1')
-
+      if (this.balls[section.startId] != this.balls[section.endId]) {
+        this.balls[section.startId].el.setAttribute('opacity', '1')
+        this.balls[section.endId].el.setAttribute('opacity', '1')
+      }
+      
       this.updateSection(section, this.activeSectionRadius)
       this.activeSection = section;
     },
@@ -195,7 +197,7 @@
 
     stopDrag() {
       this.draggingId = null
-      onChange()
+      $dispatch('change')
     }
   }"
   x-init="initChart()"

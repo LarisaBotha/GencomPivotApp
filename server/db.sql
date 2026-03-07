@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS users;
 
 DROP TYPE IF EXISTS pivot_system_status;
 DROP TYPE IF EXISTS pivot_direction;
+DROP TYPE IF EXISTS pivot_speed_section;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TYPE pivot_direction AS ENUM ('forward', 'reverse');
@@ -38,6 +39,7 @@ CREATE TABLE pivot_command_queue (
 );
 
 CREATE TYPE pivot_speed_section AS (
+    serial INT,
     speed_pct FLOAT,
     label TEXT,
     angle_deg FLOAT
@@ -58,7 +60,7 @@ CREATE TABLE pivot_status (
 CREATE OR REPLACE FUNCTION create_pivot_status()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO pivot_status (pivot_id, speed_sections) VALUES (NEW.id, ARRAY[(100.0, NULL::TEXT, 360.0)]::pivot_speed_section[]);
+    INSERT INTO pivot_status (pivot_id, speed_sections) VALUES (NEW.id, ARRAY[(1, 100.0, NULL::TEXT, 360.0)]::pivot_speed_section[]);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

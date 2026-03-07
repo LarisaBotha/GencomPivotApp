@@ -1,12 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"slices"
 	"time"
-	"encoding/json"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -229,23 +229,15 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch Status
-	type SpeedSection struct {
-		SpeedPct float64 `json:"speed_pct" db:"speed_pct"`
-		Label    string  `json:"label" db:"label"`
-		Angle    float64 `json:"angle" db:"angle"`
-	}
-
 	var pivotStatus struct {
-		PositionDeg   float64        `json:"position_deg" db:"position_deg"`
-		SpeedPct      float64        `json:"speed_pct" db:"speed_pct"`
-		Direction     string         `json:"direction" db:"direction"`
-		Wet           bool           `json:"wet" db:"wet"`
-		Status        string         `json:"status" db:"status"`
-		Battery       float64        `json:"battery_pct" db:"battery_pct"`
-		SpeedSections []SpeedSection `json:"speed_sections" db:"speed_sections"`
+		PositionDeg float64 `json:"position_deg" db:"position_deg"`
+		SpeedPct    float64 `json:"speed_pct" db:"speed_pct"`
+		Direction   string  `json:"direction" db:"direction"`
+		Wet         bool    `json:"wet" db:"wet"`
+		Status      string  `json:"status" db:"status"`
+		Battery     float64 `json:"battery_pct" db:"battery_pct"`
 	}
-	var sectionsJSON []byte
-	err := DB.QueryRow(r.Context(), 
+	err := DB.QueryRow(r.Context(),
 		`SELECT 
 			position_deg, 
 			speed_pct, 
@@ -262,10 +254,48 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 		&pivotStatus.Direction,
 		&pivotStatus.Wet,
 		&pivotStatus.Status,
-		&pivotStatus.Battery,
-		&sectionsJSON)
+		&pivotStatus.Battery)
 
-	log.Println("LARISA", sectionsJSON);
+	if err != nil {
+		log.Println(err)
+		writeText(w, http.StatusNotFound, "Pivot Not Found")
+		return
+	}
+
+	// Success
+	writeJSON(w, http.StatusOK, pivotStatus)
+}
+
+func handlePivotSpeedSections(w http.ResponseWriter, r *http.Request) {
+
+	// Restrict to GET
+	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Decode Body
+	var args struct {
+		PivotId string `json:"pivot_id"`
+	}
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid arguments")
+		return
+	}
+
+	type SpeedSection struct {
+		SpeedPct float64 `json:"speed_pct" db:"speed_pct"`
+		Label    string  `json:"label" db:"label"`
+		Angle    float64 `json:"angle" db:"angle"`
+	}
+	var SpeedSections []SpeedSection
+	var sectionsJSON []byte
+	err := DB.QueryRow(r.Context(),
+		`SELECT COALESCE(to_jsonb(speed_sections), '[]'::jsonb)
+        FROM pivot_status
+        WHERE pivot_id=$1`,
+		args.PivotId).Scan(&sectionsJSON)
+
 	if err != nil {
 		log.Println(err)
 		writeText(w, http.StatusNotFound, "Pivot Not Found")
@@ -273,7 +303,7 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(sectionsJSON) > 0 {
-		if err := json.Unmarshal(sectionsJSON, &pivotStatus.SpeedSections); err != nil {
+		if err := json.Unmarshal(sectionsJSON, &SpeedSections); err != nil {
 			log.Println(err)
 			writeText(w, http.StatusInternalServerError, "Error unmarshaling sections")
 			return
@@ -281,5 +311,5 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Success
-	writeJSON(w, http.StatusOK, pivotStatus)
+	writeJSON(w, http.StatusOK, SpeedSections)
 }
