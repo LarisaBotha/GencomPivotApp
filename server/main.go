@@ -18,7 +18,7 @@ func main() {
 	http.HandleFunc("/api/register_pivot", handleRegisterPivot)
 	http.HandleFunc("/api/get_user_pivots", handleGetUserPivots)
 	http.HandleFunc("/api/pivot_status", handlePivotStatus)
-	http.HandleFunc("/api/pivot_speed_sections", handlePivotSpeedSections)
+	http.HandleFunc("/api/pivot_timer_sections", handlePivotTimerSections)
 	http.HandleFunc("/api/command", handleCommand)
 
 	fmt.Println("🚀 Server started on :8080")

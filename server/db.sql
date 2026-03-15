@@ -1,11 +1,11 @@
 DROP TABLE IF EXISTS pivot_command_queue;
 DROP TABLE IF EXISTS pivot_status;
+DROP TABLE IF EXISTS pivot_timer_sections;
 DROP TABLE IF EXISTS pivots;
 DROP TABLE IF EXISTS users;
 
 DROP TYPE IF EXISTS pivot_system_status;
 DROP TYPE IF EXISTS pivot_direction;
-DROP TYPE IF EXISTS pivot_speed_section;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TYPE pivot_direction AS ENUM ('forward', 'reverse');
@@ -38,12 +38,50 @@ CREATE TABLE pivot_command_queue (
     acknowledged_at TIMESTAMP
 );
 
-CREATE TYPE pivot_speed_section AS (
-    serial INT,
-    speed_pct FLOAT,
+CREATE TABLE pivot_timer_sections (
+    pivot_id UUID REFERENCES pivots(id) ON DELETE CASCADE,
+    serial INT NOT NULL,
+    timer_pct FLOAT NOT NULL DEFAULT 100.0,
     label TEXT,
-    angle_deg FLOAT
+    angle_deg FLOAT NOT NULL DEFAULT 360.0,
+    PRIMARY KEY (pivot_id, serial)
 );
+
+CREATE OR REPLACE FUNCTION set_next_pivot_serial()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.serial IS NULL THEN
+        SELECT COALESCE(MAX(serial), 0) + 1 
+        INTO NEW.serial 
+        FROM pivot_timer_sections 
+        WHERE pivot_id = NEW.pivot_id;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_auto_serial
+BEFORE INSERT ON pivot_timer_sections
+FOR EACH ROW
+EXECUTE FUNCTION set_next_pivot_serial();
+
+CREATE OR REPLACE FUNCTION fill_pivot_serial_gaps()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE pivot_timer_sections
+    SET serial = serial - 1
+    WHERE pivot_id = OLD.pivot_id
+      AND serial > OLD.serial;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_fill_serial_gaps
+AFTER DELETE ON pivot_timer_sections
+FOR EACH ROW
+EXECUTE FUNCTION fill_pivot_serial_gaps();
 
 CREATE TABLE pivot_status (
     pivot_id UUID PRIMARY KEY REFERENCES pivots(id) ON DELETE CASCADE,
@@ -53,14 +91,13 @@ CREATE TABLE pivot_status (
     wet BOOLEAN NOT NULL DEFAULT false,
     status pivot_system_status NOT NULL DEFAULT 'offline',
     battery_pct FLOAT NOT NULL DEFAULT 0,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    speed_sections pivot_speed_section[]
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE OR REPLACE FUNCTION create_pivot_status()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO pivot_status (pivot_id, speed_sections) VALUES (NEW.id, ARRAY[(1, 100.0, NULL::TEXT, 360.0)]::pivot_speed_section[]);
+    INSERT INTO pivot_status (pivot_id) VALUES (NEW.id);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

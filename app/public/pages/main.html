@@ -55,10 +55,11 @@
             </div>
 
             <button 
-                class="self-stretch bg-green-500 text-white px-4 rounded cursor-pointer"
+                class="self-stretch bg-green-500 text-white rounded cursor-pointer"
                 @click="bShowRegisterPivotModal = true"
+                style="aspect-ratio: 1;"
             >
-                <img :src="'../icons/plus.svg'" class="w-5">
+                <img :src="'../icons/plus.svg'" class="w-8">
             </button>
         </div>
 
@@ -92,14 +93,20 @@
                 async pivotSpeedSections() {
                     if (!selectedPivot?.id) return;
                     try {
-                        let res = await fetch(`${API_URL}/api/pivot_speed_sections?pivot_id=${selectedPivot.id}`, {
+                        let res = await fetch(`${API_URL}/api/pivot_timer_sections?pivot_id=${selectedPivot.id}`, {
                             method: 'GET'
                             // headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
                             // body: formDataParams
                         });
                         if (res.ok) {
                             let data = await res.json();
-                            if (data) this.sections = data;
+                            //if (data) this.sectionData = data;
+                            this.sectionData = [
+                                { serial: 1, label: 'North Field', timer_pct: 10, angle_deg: 60 },
+                                { serial: 2, label: 'Pasture', timer_pct: 25, angle_deg: 170 },
+                                { serial: 3, label: 'Roadside', timer_pct: 50, angle_deg: 200 },
+                                { serial: 4, label: 'Hilltop', timer_pct: 15, angle_deg: 360 }
+                            ]
                         }
                     } catch(err) {
                         console.error('Status fetch error:', err);

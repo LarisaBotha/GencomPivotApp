@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -83,14 +82,14 @@ func handleRegisterUser(w http.ResponseWriter, r *http.Request) {
 	// Hashing
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeText(w, http.StatusInternalServerError, "Internal server error")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Internal server error: %v", err))
 		return
 	}
 
 	// Register
 	if _, err := DB.Exec(r.Context(), `INSERT INTO users (cell, email, password, name) VALUES ($1, $2, $3, $4);`,
 		body.Cell, body.Email, hashedPassword, body.Name); err != nil {
-		writeText(w, http.StatusInternalServerError, "Failed to register user")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to register user: %v", err))
 		return
 	}
 
@@ -126,7 +125,7 @@ func handleRegisterPivot(w http.ResponseWriter, r *http.Request) {
 	// Register
 	if _, err := DB.Exec(r.Context(), `INSERT INTO pivots (name, "user", imei) VALUES ($1, $2, $3);`,
 		body.Name, body.User, body.Imei); err != nil {
-		writeText(w, http.StatusInternalServerError, "Failed to register pivot")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to register pivot: %v", err))
 		return
 	}
 
@@ -152,7 +151,7 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 	// Get user pivots
 	rows, err := DB.Query(r.Context(), `SELECT id, name FROM pivots WHERE "user" = $1`, userID)
 	if err != nil {
-		writeText(w, http.StatusInternalServerError, "Failed to fetch user pivots")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch user pivots: %v", err))
 		return
 	}
 	defer rows.Close()
@@ -167,7 +166,7 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p pivot
 		if err := rows.Scan(&p.ID, &p.Name); err != nil {
-			writeText(w, http.StatusInternalServerError, "Internal Server Error")
+			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Internal server error: %v", err))
 			return
 		}
 		pivots = append(pivots, p)
@@ -203,7 +202,7 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 	// Insert (created_at is automatically populated)
 	if _, err := DB.Exec(r.Context(), `INSERT INTO pivot_command_queue (pivot_id, command, payload) VALUES ($1, $2, $3);`,
 		body.PivotId, body.Command, body.Payload); err != nil {
-		writeText(w, http.StatusInternalServerError, "Failed to queue command")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
 		return
 	}
 
@@ -244,8 +243,7 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 			direction::text, 
 			wet, 
 			status::text, 
-			battery_pct, 
-			COALESCE(to_jsonb(speed_sections), '[]'::jsonb)
+			battery_pct
         FROM pivot_status
         WHERE pivot_id=$1`,
 		args.PivotId).Scan(
@@ -255,9 +253,8 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 		&pivotStatus.Wet,
 		&pivotStatus.Status,
 		&pivotStatus.Battery)
-
 	if err != nil {
-		log.Println(err)
+		log.Println("ERR STAT", err)
 		writeText(w, http.StatusNotFound, "Pivot Not Found")
 		return
 	}
@@ -266,50 +263,80 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pivotStatus)
 }
 
-func handlePivotSpeedSections(w http.ResponseWriter, r *http.Request) {
+func handlePivotTimerSections(w http.ResponseWriter, r *http.Request) {
 
-	// Restrict to GET
-	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
-		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
+    if r.Method == http.MethodGet {
+        var args struct {
+            PivotId string `json:"pivot_id"`
+        }
+        if err := GetArguments(r, &args); err != nil {
+            writeText(w, http.StatusBadRequest, "Invalid arguments")
+            return
+        }
 
-	// Decode Body
-	var args struct {
-		PivotId string `json:"pivot_id"`
-	}
-	if err := GetArguments(r, &args); err != nil {
-		writeText(w, http.StatusBadRequest, "Invalid arguments")
-		return
-	}
+        type TimerSection struct {
+            Serial   int     `json:"serial"`
+            SpeedPct float64 `json:"timer_pct"`
+            Label    *string `json:"label"`
+            Angle    float64 `json:"angle"`
+        }
 
-	type SpeedSection struct {
-		SpeedPct float64 `json:"speed_pct" db:"speed_pct"`
-		Label    string  `json:"label" db:"label"`
-		Angle    float64 `json:"angle" db:"angle"`
-	}
-	var SpeedSections []SpeedSection
-	var sectionsJSON []byte
-	err := DB.QueryRow(r.Context(),
-		`SELECT COALESCE(to_jsonb(speed_sections), '[]'::jsonb)
-        FROM pivot_status
-        WHERE pivot_id=$1`,
-		args.PivotId).Scan(&sectionsJSON)
+        rows, err := DB.Query(r.Context(),
+            `SELECT serial, timer_pct, label, angle_deg 
+             FROM pivot_timer_sections 
+             WHERE pivot_id = $1 
+             ORDER BY serial ASC`, args.PivotId)
+        if err != nil {
+            writeText(w, http.StatusInternalServerError, "Database error")
+            return
+        }
+        defer rows.Close()
 
-	if err != nil {
-		log.Println(err)
-		writeText(w, http.StatusNotFound, "Pivot Not Found")
-		return
-	}
+        sections := []TimerSection{}
+        for rows.Next() {
+            var s TimerSection
+            if err := rows.Scan(&s.Serial, &s.SpeedPct, &s.Label, &s.Angle); err != nil {
+                writeText(w, http.StatusInternalServerError, "Scan error")
+                return
+            }
+            sections = append(sections, s)
+        }
+        writeJSON(w, http.StatusOK, sections)
+        return
+    }
 
-	if len(sectionsJSON) > 0 {
-		if err := json.Unmarshal(sectionsJSON, &SpeedSections); err != nil {
-			log.Println(err)
-			writeText(w, http.StatusInternalServerError, "Error unmarshaling sections")
-			return
-		}
-	}
+    if r.Method == http.MethodPost {
+        var args struct {
+            PivotId  string  `json:"pivot_id"`
+            Serial   *int    `json:"serial"`
+            SpeedPct float64 `json:"timer_pct"`
+            Label    *string `json:"label"`
+            Angle    float64 `json:"angle"`
+        }
 
-	// Success
-	writeJSON(w, http.StatusOK, SpeedSections)
+        if err := GetArguments(r, &args); err != nil {
+            writeText(w, http.StatusBadRequest, "Invalid JSON body")
+            return
+        }
+
+        _, err := DB.Exec(r.Context(), `
+            INSERT INTO pivot_timer_sections (pivot_id, serial, timer_pct, label, angle_deg)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (pivot_id, serial) 
+            DO UPDATE SET 
+                timer_pct = EXCLUDED.timer_pct,
+                label = EXCLUDED.label,
+                angle_deg = EXCLUDED.angle_deg`,
+            args.PivotId, args.Serial, args.SpeedPct, args.Label, args.Angle)
+
+        if err != nil {
+            writeText(w, http.StatusBadRequest, fmt.Sprintf("Failed to save section: %v", err))
+            return
+        }
+
+        writeText(w, http.StatusOK, "Section saved successfully")
+        return
+    }
+
+    writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 }
