@@ -86,3 +86,25 @@ class PieChart extends HTMLElement {
 }
 
 customElements.define('pie-chart', PieChart);
+
+class SectionEditModal extends HTMLElement {
+  constructor() {
+    super();
+  }
+
+  async connectedCallback() {
+    const filePath = '/components/sectionEditModal.html';
+
+    try {
+      const response = await fetch(filePath);
+      const html = await response.text();
+      
+      this.outerHTML = html;
+      
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  }
+}
+
+customElements.define('section-edit-modal', SectionEditModal);

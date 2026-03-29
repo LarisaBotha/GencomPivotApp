@@ -12,7 +12,9 @@
     "serve": "serve public",
     "backend": "cd ../server && air",
     "dev": "concurrently \"npm run watch:css\" \"npm run serve\" \"npm run backend\"",
-    "build": "npm run build:css && npx cap copy && npx cap run android"
+    "build": "npm run build:css",
+    "build:android": "npm run build:css && npx cap sync android",
+    "dev:android": "npx cap run android"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

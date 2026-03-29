@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -177,8 +178,14 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 
 func handleCommand(w http.ResponseWriter, r *http.Request) {
 
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
 	// Restrict to Post
-	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
+	if r.Method != http.MethodPost {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -207,7 +214,7 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Success
-	w.WriteHeader(http.StatusOK)
+	writeHeader(w, http.StatusOK)
 }
 
 func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
@@ -263,80 +270,217 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pivotStatus)
 }
 
-func handlePivotTimerSections(w http.ResponseWriter, r *http.Request) {
+type TimerSection struct {
+	Serial   int     `json:"serial"`
+	SpeedPct float64 `json:"timer_pct"`
+	Label    *string `json:"label"`
+	Angle    float64 `json:"angle_deg"`
+}
 
-    if r.Method == http.MethodGet {
-        var args struct {
-            PivotId string `json:"pivot_id"`
-        }
-        if err := GetArguments(r, &args); err != nil {
-            writeText(w, http.StatusBadRequest, "Invalid arguments")
-            return
-        }
+func getPivotTimerSections(context context.Context, pivotId string) ([]TimerSection, error) {
+	sections := []TimerSection{}
 
-        type TimerSection struct {
-            Serial   int     `json:"serial"`
-            SpeedPct float64 `json:"timer_pct"`
-            Label    *string `json:"label"`
-            Angle    float64 `json:"angle"`
-        }
+	rows, err := DB.Query(context,
+		`SELECT serial, timer_pct, label, angle_deg 
+			FROM pivot_timer_sections 
+			WHERE pivot_id = $1 
+			ORDER BY serial ASC`, pivotId)
+	if err != nil {
+		return sections, fmt.Errorf("Database error")
+	}
+	defer rows.Close()
 
-        rows, err := DB.Query(r.Context(),
-            `SELECT serial, timer_pct, label, angle_deg 
-             FROM pivot_timer_sections 
-             WHERE pivot_id = $1 
-             ORDER BY serial ASC`, args.PivotId)
-        if err != nil {
-            writeText(w, http.StatusInternalServerError, "Database error")
-            return
-        }
-        defer rows.Close()
+	for rows.Next() {
+		var s TimerSection
+		if err := rows.Scan(&s.Serial, &s.SpeedPct, &s.Label, &s.Angle); err != nil {
+			return sections, fmt.Errorf("Scan error")
+		}
+		sections = append(sections, s)
+	}
 
-        sections := []TimerSection{}
-        for rows.Next() {
-            var s TimerSection
-            if err := rows.Scan(&s.Serial, &s.SpeedPct, &s.Label, &s.Angle); err != nil {
-                writeText(w, http.StatusInternalServerError, "Scan error")
-                return
-            }
-            sections = append(sections, s)
-        }
-        writeJSON(w, http.StatusOK, sections)
-        return
-    }
+	return sections, nil
+}
 
-    if r.Method == http.MethodPost {
-        var args struct {
-            PivotId  string  `json:"pivot_id"`
-            Serial   *int    `json:"serial"`
-            SpeedPct float64 `json:"timer_pct"`
-            Label    *string `json:"label"`
-            Angle    float64 `json:"angle"`
-        }
+func handleGetPivotTimerSections(w http.ResponseWriter, r *http.Request) {
 
-        if err := GetArguments(r, &args); err != nil {
-            writeText(w, http.StatusBadRequest, "Invalid JSON body")
-            return
-        }
+	// Restrict to GET
+	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 
-        _, err := DB.Exec(r.Context(), `
-            INSERT INTO pivot_timer_sections (pivot_id, serial, timer_pct, label, angle_deg)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (pivot_id, serial) 
-            DO UPDATE SET 
-                timer_pct = EXCLUDED.timer_pct,
-                label = EXCLUDED.label,
-                angle_deg = EXCLUDED.angle_deg`,
-            args.PivotId, args.Serial, args.SpeedPct, args.Label, args.Angle)
+	var args struct {
+		PivotId string `json:"pivot_id"`
+	}
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid arguments")
+		return
+	}
 
-        if err != nil {
-            writeText(w, http.StatusBadRequest, fmt.Sprintf("Failed to save section: %v", err))
-            return
-        }
+	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	if err != nil {
+		writeText(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
-        writeText(w, http.StatusOK, "Section saved successfully")
-        return
-    }
+	writeJSON(w, http.StatusOK, sections)
 
-    writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+}
+
+func handleRegisterPivotTimerSection(w http.ResponseWriter, r *http.Request) {
+
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var args struct {
+		PivotId  string   `json:"pivot_id"`
+		SpeedPct *float64 `json:"timer_pct"`
+		Serial   *int     `json:"serial"` // optional
+		Label    *string  `json:"label"`  // optional
+		Angle    float64  `json:"angle"`  // optional
+	}
+
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	_, err := DB.Exec(r.Context(), `
+		INSERT INTO pivot_timer_sections (pivot_id, serial, timer_pct, label, angle_deg)
+			VALUES ($1, $2, COALESCE($3, 100.0), $4, $5)
+			ON CONFLICT (pivot_id, serial) 
+			DO UPDATE SET 
+				timer_pct = COALESCE($3, pivot_timer_sections.timer_pct),
+				label     = COALESCE($4, pivot_timer_sections.label),
+				angle_deg = $5`,
+		args.PivotId, args.Serial, args.SpeedPct, args.Label, args.Angle)
+
+	if err != nil {
+		log.Println("ERR: ", err)
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to add section: %v", err))
+		return
+	}
+
+	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sections)
+}
+
+func handleDeletePivotTimerSection(w http.ResponseWriter, r *http.Request) {
+
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var args struct {
+		PivotId string `json:"pivot_id"`
+		Serial  *int   `json:"serial"` // optional
+	}
+
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	_, err := DB.Exec(r.Context(), `
+		DELETE FROM pivot_timer_sections
+		WHERE pivot_id = $1 AND serial = $2`,
+		args.PivotId, args.Serial)
+
+	if err != nil {
+		writeText(w, http.StatusBadRequest, fmt.Sprintf("Failed to delete section: %v", err))
+		return
+	}
+
+	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	if err != nil {
+		writeText(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sections)
+}
+
+func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
+
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var args struct {
+		PivotId  string   `json:"pivot_id"`
+		Serial   int      `json:"serial"`
+		SpeedPct *float64 `json:"timer_pct"` // optional
+		Label    *string  `json:"label"`     // optional
+		Angle    *float64 `json:"angle_deg"` // optional
+	}
+
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	if args.PivotId == "" {
+		writeText(w, http.StatusBadRequest, "pivot_id required")
+		return
+	}
+
+	// Update only provided fields
+	_, err := DB.Exec(r.Context(), `
+		UPDATE pivot_timer_sections
+		SET
+			timer_pct = COALESCE($1, timer_pct),
+			label     = COALESCE($2, label),
+			angle_deg = COALESCE($3, angle_deg)
+		WHERE pivot_id = $4 AND serial = $5
+	`,
+		args.SpeedPct,
+		args.Label,
+		args.Angle,
+		args.PivotId,
+		args.Serial,
+	)
+
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update section: %v", err))
+		return
+	}
+
+	// Return updated list
+	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sections)
 }

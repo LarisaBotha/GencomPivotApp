@@ -2,6 +2,7 @@
   x-data="{
     width: 0,
     height: 0,
+    minSectionSize: 15,
     dragBallRadius: 6,
     labelMaxHeight: 40,
     labelMaxWidth: 80,
@@ -18,8 +19,8 @@
     },
     get centre() { 
       return {
-        x: this.r + this.padding.x,
-        y: this.r + this.padding.y,
+        x: this.width/2,
+        y: this.height/2,
       }
     },
     draggingIndex: null,
@@ -50,14 +51,53 @@
       this.height = rect.height
     },
 
+    clampBetween(min, max, angle) {
+      min = (min + 360) % 360;
+      max = (max + 360) % 360;
+      angle = (angle + 360) % 360;
+
+      if (min < max) {
+        return Math.min(Math.max(angle, min), max);
+      }
+
+      if (angle > min || angle < max) {
+        return angle;
+      }
+
+      const distToMin = Math.abs(angle - min);
+      const distToMax = Math.abs(angle - max);
+
+      return distToMin < distToMax ? min : max;
+    },
+
     onMove(e) {
       if (this.draggingIndex === null) return;
+
+      let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      let clientY = e.touches ? e.touches[0].clientY : e.clientY;
       
       const rect = this.$refs.svg.getBoundingClientRect();
-      const x = e.clientX - rect.left - this.centre.x;
-      const y = e.clientY - rect.top - this.centre.y;
-      
-      this.sectionData[this.draggingIndex].angle_deg = this.radToDeg(this.normalizeAngle(Math.atan2(y, x)));
+      const x = clientX - rect.left - this.centre.x;
+      const y = clientY - rect.top - this.centre.y;
+
+      let angle = this.radToDeg(this.normalizeAngle(Math.atan2(y, x)));
+
+      const current = this.sectionData[this.draggingIndex];
+
+      const prevIndex = this.draggingIndex === 0 
+        ? this.sectionData.length - 1 
+        : this.draggingIndex - 1;
+
+      const nextIndex = this.draggingIndex === this.sectionData.length - 1 
+        ? 0 
+        : this.draggingIndex + 1;
+
+      const prevAngle = this.sectionData[prevIndex].angle_deg;
+      const nextAngle = this.sectionData[nextIndex].angle_deg;
+
+      angle = this.clampBetween(prevAngle + this.minSectionSize, nextAngle - this.minSectionSize, angle);
+
+      current.angle_deg = angle;
     },
 
     drawSector(start, end, radius) {
@@ -84,15 +124,16 @@
     }
   }"
   @mousemove.window="onMove($event)"
-  @mouseup.window="draggingIndex = null"
+  @touchmove.window="onMove($event)"
+  @mouseup.window="if( draggingIndex != null) { window.dispatchEvent(new CustomEvent(&quot;on-edit&quot;, { detail: sectionData[draggingIndex] })); draggingIndex = null }"
+  @touchend.window="if( draggingIndex != null) { window.dispatchEvent(new CustomEvent(&quot;on-edit&quot;, { detail: sectionData[draggingIndex] })); draggingIndex = null }"
   class="w-full aspect-square"
   x-init="init()"
 >
   <svg
     x-ref="svg"
-    class="w-full h-full"
+    class="h-full w-full touch-none"
   >
-
     <defs>
       <filter id="activeShadow" x="-30%" y="-30%" width="160%" height="160%">
         <feDropShadow
@@ -123,8 +164,9 @@
             cx='${pos.x}' cy='${pos.y}' 
             r='${dragBallRadius}' 
             fill='${color}' 
-            style='cursor: pointer' 
-            onmousedown='window.dispatchEvent(new CustomEvent(&quot;on-drag&quot;, {detail: ${idx}}))' 
+            style='cursor: pointer;'
+            onmousedown='window.dispatchEvent(new CustomEvent(&quot;set-dragging-index&quot;, {detail: ${idx}}))'
+            ontouchstart='window.dispatchEvent(new CustomEvent(&quot;set-dragging-index&quot;, {detail: ${idx}}))'
           />`;
         };
 
@@ -168,51 +210,82 @@
 
           return path + label;
           
-        }).join('') + (activeIndex !== null ? makeHandle(activeIndex) + makeHandle(activeIndex === 0 ? sectionData.length - 1 : activeIndex - 1) : '')
+        }).join('') + (activeIndex !== null && sectionData.length > 1? makeHandle(activeIndex) + makeHandle(activeIndex === 0 ? sectionData.length - 1 : activeIndex - 1) : '')
       "
-      @on-select.window="activeIndex = $event.detail"
-      @on-drag.window="draggingIndex = $event.detail">
+      @on-select.window="activeIndex == $event.detail ? activeIndex = null : activeIndex = $event.detail"
+      @set-dragging-index.window="draggingIndex = $event.detail">
     </g>
 
   </svg>
 
   <div class="flex justify-between">
-    <div>
+    <div class="w-8">
       <template x-if="activeIndex != null && sectionData.length > 1">
         <button 
           @click="() => {
             if (sectionData.length <= 1 || activeIndex === null) return;
-    
-            sectionData.splice(activeIndex, 1);
+
+            let currentSection = sectionData[activeIndex]
+            
+            $dispatch('on-delete', {pivot_id: currentSection.pivot_id, serial: currentSection.serial});
+
             activeIndex = null;
           }"
-          class="text-white rounded font-bold cursor-pointer bg-red-500"
+          class="text-white rounded font-bold cursor-pointer bg-white shadow-sm"
           style="aspect-ratio: 1">
           <img :src="'../icons/dash.svg'" class="w-8">
         </button>
       </template>
     </div>
 
-    <button 
-      :disabled = "sectionData.length == maxSections"
-      @click="() => {
-        const lastSection = sectionData[sectionData.length - 1]
-        const secondLastSection = sectionData[sectionData.length - 2]
-        
-        const start = degToRad(secondLastSection.angle_deg);
-        const end = degToRad(lastSection.angle_deg);
-        const midAngle = radToDeg(normalizeAngle(start + ((end - start + 2*Math.PI) % (2*Math.PI)) / 2))
+    <div>
+      <template x-if="activeIndex != null">
+        <div x-data="{
+          bShow: false
+        }">
+          <button 
+            @click="bShow = true"
+            class="text-white rounded font-bold cursor-pointer bg-blue-500 h-8 px-2 shadow-md"
+          >
+            Edit
+          </button>
 
-        lastSection.angle_deg = midAngle;
-        sectionData.push({
-          serial: sectionData.length,
-          angle_deg: end,
-          timer_pct: 50
-        }); 
-      }"
-      class="text-white rounded font-bold cursor-pointer bg-blue-500 disabled:opacity-50 disabled:cursor-auto"
-      style="aspect-ratio: 1">
-      <img :src="'../icons/plus.svg'" class="w-8">
-    </button>
+          <section-edit-modal></section-edit-modal>
+        </div>
+      </template>
+    </div>
+
+    <div class="w-8">
+      <template x-if="sectionData">
+        <button 
+          :disabled = "sectionData.length == maxSections"
+          @click="() => {
+
+            let angle;
+            let serial;
+            if (sectionData.length == 0) {
+              angle = 360;
+              serial = 1;
+            } else if (sectionData.length == 1) {
+              angle = 180;
+              serial = 2;
+            } else {
+              const lastSection = sectionData[sectionData.length - 1]
+              const secondLastSection = sectionData[sectionData.length - 2]
+              
+              const start = degToRad(secondLastSection.angle_deg);
+              const end = degToRad(lastSection.angle_deg);
+              angle = radToDeg(normalizeAngle(start + ((end - start + 2*Math.PI) % (2*Math.PI)) / 2))
+              serial = sectionData.length
+            }
+
+            $dispatch('on-add', {serial: serial, angle_deg: angle}); 
+          }"
+          class="rounded font-bold cursor-pointer bg-white shadow-sm disabled:opacity-50 disabled:cursor-auto"
+          style="aspect-ratio: 1">
+          <img :src="'../icons/plus.svg'" class="w-8">
+        </button>
+      </template>
+    </div>
   </div>
 </div>

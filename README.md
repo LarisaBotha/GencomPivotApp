@@ -27,8 +27,11 @@
 - merge pivot and pivot_status tables
 - android app signing for release
 - api documentation
-- integrated pie chart
 - modernise ui
-- implement on change to persist
-- min pie chart angle
-- ball angles while dragging
+- show ball angles while dragging
+- angle 2 decimal points
+
+- dragging on mobile not working
+- better pivot section addition?
+- Last handler to return queue and documentation
+- Hosting

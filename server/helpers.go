@@ -10,6 +10,7 @@ import (
 
 func writeHeader(w http.ResponseWriter, status int) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.WriteHeader(status)
 }
 
@@ -70,3 +71,65 @@ func GetArguments(r *http.Request, dst any) error {
 	}
 	return nil
 }
+
+// func GetArguments(r *http.Request, dst any) error {
+// 	contentType := r.Header.Get("Content-Type")
+
+// 	// 1. Handle JSON (Primary for modern APIs)
+// 	if strings.Contains(contentType, "application/json") {
+// 		// TEMPORARY DEBUG:
+// 		bodyBytes, _ := io.ReadAll(r.Body)
+// 		log.Println("RAW BODY:", string(bodyBytes))
+// 		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes)) // Reset body for decoder
+
+// 		return json.NewDecoder(r.Body).Decode(dst)
+// 	}
+
+// 	// 2. Handle Form/URL Params (Fallback)
+// 	if err := r.ParseForm(); err != nil {
+// 		return err
+// 	}
+
+// 	v := reflect.ValueOf(dst).Elem()
+// 	t := v.Type()
+
+// 	for i := 0; i < t.NumField(); i++ {
+// 		field := t.Field(i)
+// 		fieldValue := v.Field(i)
+
+// 		// Get the key from the json tag or lowercase field name
+// 		key := field.Tag.Get("json")
+// 		if key == "" || key == "-" {
+// 			key = strings.ToLower(field.Name)
+// 		}
+
+// 		// Get value from Query (GET) or PostForm (POST/PUT)
+// 		val := r.FormValue(key)
+// 		if val == "" {
+// 			continue
+// 		}
+
+// 		// 3. Type-Safe Assignment using Reflection
+// 		switch fieldValue.Kind() {
+// 		case reflect.String:
+// 			fieldValue.SetString(val)
+// 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+// 			if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+// 				fieldValue.SetInt(i)
+// 			}
+// 		case reflect.Float32, reflect.Float64:
+// 			if f, err := strconv.ParseFloat(val, 64); err == nil {
+// 				fieldValue.SetFloat(f)
+// 			}
+// 		case reflect.Bool:
+// 			if b, err := strconv.ParseBool(val); err == nil {
+// 				fieldValue.SetBool(b)
+// 			}
+// 		case reflect.Pointer:
+// 			// Handling pointers (like *int or *float64) is more complex.
+// 			// For simplicity in this handler, we target the base types.
+// 			// If you use pointers extensively, you'd need to Initialize the pointer here.
+// 		}
+// 	}
+// 	return nil
+// }
