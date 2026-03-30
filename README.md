@@ -26,12 +26,17 @@
 - loading 
 - merge pivot and pivot_status tables
 - android app signing for release
-- api documentation
 - modernise ui
 - show ball angles while dragging
 - angle 2 decimal points
+- Handle failures
+- SSE for status updates
+- Pivot section deterministic colour
+- Command for timer update
+- Move 0 degrees to top
+- PieChart must not always draggable, use another edit field?
 
+- 2) api documentation
+- 3) Hosting
+- 4) apk
 - dragging on mobile not working
-- better pivot section addition?
-- Last handler to return queue and documentation
-- Hosting

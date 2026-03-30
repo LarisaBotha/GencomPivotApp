@@ -17,8 +17,14 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
 	// Restrict to Post
-	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
+	if r.Method != http.MethodPost {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -56,8 +62,14 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func handleRegisterUser(w http.ResponseWriter, r *http.Request) {
 
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
 	// Restrict to Post
-	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
+	if r.Method != http.MethodPost {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -100,8 +112,14 @@ func handleRegisterUser(w http.ResponseWriter, r *http.Request) {
 
 func handleRegisterPivot(w http.ResponseWriter, r *http.Request) {
 
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
 	// Restrict to Post
-	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
+	if r.Method != http.MethodPost {
 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -284,7 +302,7 @@ func getPivotTimerSections(context context.Context, pivotId string) ([]TimerSect
 		`SELECT serial, timer_pct, label, angle_deg 
 			FROM pivot_timer_sections 
 			WHERE pivot_id = $1 
-			ORDER BY serial ASC`, pivotId)
+			ORDER BY angle_deg ASC`, pivotId)
 	if err != nil {
 		return sections, fmt.Errorf("Database error")
 	}
@@ -483,4 +501,137 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, sections)
+}
+
+type Command struct {
+	ID      int     `json:"id"`
+	Command string  `json:"command"`
+	Payload *string `json:"payload"`
+}
+
+func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
+
+	// Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	log.Println("HERE")
+
+	// Decode body
+	var body struct {
+		PivotId    string   `json:"pivot_id"`
+		Position   *float64 `json:"position_deg"` // optional
+		Speed      *float64 `json:"speed_pct"`    // optional
+		Direction  *string  `json:"direction"`    // optional
+		Wet        *bool    `json:"wet"`          // optional
+		Status     *string  `json:"status"`       // optional
+		BatteryPct *float64 `json:"battery_pct"`  // optional
+	}
+	if err := GetArguments(r, &body); err != nil {
+		log.Println("err ", err)
+		writeText(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	log.Println("body ", body)
+
+	if body.PivotId == "" {
+		writeText(w, http.StatusBadRequest, "pivot_id required")
+		return
+	}
+
+	ctx := r.Context()
+
+	// Begin transaction
+	tx, err := DB.Begin(ctx)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, "Failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Update pivot status
+	_, err = tx.Exec(ctx, `
+		UPDATE pivot_status
+		SET 
+			position_deg = COALESCE($1, position_deg),
+			speed_pct    = COALESCE($2, speed_pct),
+			direction    = COALESCE($3, direction),
+			wet          = COALESCE($4, wet),
+			status       = COALESCE($5, status),
+			battery_pct  = COALESCE($6, battery_pct),
+			updated_at   = NOW()
+		WHERE pivot_id = $7
+	`,
+		body.Position,
+		body.Speed,
+		NormalizeString(body.Direction),
+		body.Wet,
+		NormalizeString(body.Status),
+		body.BatteryPct,
+		body.PivotId,
+	)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update status: %v", err))
+		return
+	}
+
+	// Fetch unacknowledged commands
+	rows, err := tx.Query(ctx, `
+		SELECT id, command, payload
+		FROM pivot_command_queue
+		WHERE pivot_id = $1 AND acknowledged = FALSE
+		ORDER BY created_at ASC
+		FOR UPDATE
+	`, body.PivotId)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, "Failed to fetch commands")
+		return
+	}
+	defer rows.Close()
+
+	var commands []Command
+	var ids []int
+
+	for rows.Next() {
+		var c Command
+		if err := rows.Scan(&c.ID, &c.Command, &c.Payload); err != nil {
+			writeText(w, http.StatusInternalServerError, "Scan error")
+			return
+		}
+		commands = append(commands, c)
+		ids = append(ids, c.ID)
+	}
+
+	// Acknowledge commands
+	if len(ids) > 0 {
+		_, err = tx.Exec(ctx, `
+			UPDATE pivot_command_queue
+			SET 
+				acknowledged = TRUE,
+				acknowledged_at = NOW()
+			WHERE id = ANY($1)
+		`, ids)
+
+		if err != nil {
+			writeText(w, http.StatusInternalServerError, "Failed to acknowledge commands")
+			return
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		writeText(w, http.StatusInternalServerError, "Failed to commit transaction")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, commands)
 }

@@ -73,8 +73,17 @@
     onMove(e) {
       if (this.draggingIndex === null) return;
 
-      let clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      let clientX, clientY;
+
+      if (e.type.startsWith('touch')) {
+        const touch = e.touches[0];
+        if (!touch) return;
+        clientX = touch.clientX;
+        clientY = touch.clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
       
       const rect = this.$refs.svg.getBoundingClientRect();
       const x = clientX - rect.left - this.centre.x;
@@ -125,8 +134,8 @@
   }"
   @mousemove.window="onMove($event)"
   @touchmove.window="onMove($event)"
-  @mouseup.window="if( draggingIndex != null) { window.dispatchEvent(new CustomEvent(&quot;on-edit&quot;, { detail: sectionData[draggingIndex] })); draggingIndex = null }"
-  @touchend.window="if( draggingIndex != null) { window.dispatchEvent(new CustomEvent(&quot;on-edit&quot;, { detail: sectionData[draggingIndex] })); draggingIndex = null }"
+  @mouseup.window="if( draggingIndex != null ) { window.dispatchEvent(new CustomEvent(&quot;on-edit&quot;, { detail: {section: sectionData[draggingIndex]} })); draggingIndex = null }"
+  @touchend.window="if( draggingIndex != null ) { window.dispatchEvent(new CustomEvent(&quot;on-edit&quot;, { detail: {section: sectionData[draggingIndex]} })); draggingIndex = null }"
   class="w-full aspect-square"
   x-init="init()"
 >
@@ -150,7 +159,7 @@
       :cy="centre.y"
       :r="r"
       fill="#d6d3d1"
-      />
+    />
 
     <g 
       x-html="
@@ -170,8 +179,36 @@
           />`;
         };
 
+        const pivotPosMarker = selectedPivot && statusData.position_deg != undefined ? (() => {
+          const pos = getArcPos(degToRad(statusData.position_deg), r);
+          const ballRadius = dragBallRadius/2;
+
+          return `
+            <line
+              x1='${centre.x}'
+              y1='${centre.y}'
+              x2='${pos.x}'
+              y2='${pos.y}'
+              stroke='black'
+              stroke-width='2'
+            />
+            <circle
+              cx='${centre.x}'
+              cy='${centre.y}'
+              r='${ballRadius}'
+              fill='black'
+            />
+            <circle
+              cx='${pos.x}'
+              cy='${pos.y}'
+              r='${ballRadius}'
+              fill='black'
+            />
+          `;
+        })() : '';
+
         return sectionData.map((s, i) => {
-          const colour = colours[i % colours.length]
+          const colour = colours[(s.serial- 1) % colours.length]
 
           const prevSection = i === 0 ? sectionData[sectionData.length - 1] : sectionData[i - 1];
           const start = degToRad(prevSection.angle_deg);
@@ -208,7 +245,7 @@
             </foreignObject>
           `;
 
-          return path + label;
+          return path + pivotPosMarker + label;
           
         }).join('') + (activeIndex !== null && sectionData.length > 1? makeHandle(activeIndex) + makeHandle(activeIndex === 0 ? sectionData.length - 1 : activeIndex - 1) : '')
       "
@@ -276,7 +313,7 @@
               const start = degToRad(secondLastSection.angle_deg);
               const end = degToRad(lastSection.angle_deg);
               angle = radToDeg(normalizeAngle(start + ((end - start + 2*Math.PI) % (2*Math.PI)) / 2))
-              serial = sectionData.length
+              serial = sectionData.length + 1
             }
 
             $dispatch('on-add', {serial: serial, angle_deg: angle}); 

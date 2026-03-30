@@ -72,6 +72,14 @@ func GetArguments(r *http.Request, dst any) error {
 	return nil
 }
 
+func NormalizeString(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	str := strings.ToLower(strings.TrimSpace(*s))
+	return &str
+}
+
 // func GetArguments(r *http.Request, dst any) error {
 // 	contentType := r.Header.Get("Content-Type")
 

@@ -22,6 +22,7 @@ func main() {
 	http.HandleFunc("/api/register_pivot_timer_section", handleRegisterPivotTimerSection)
 	http.HandleFunc("/api/delete_pivot_timer_section", handleDeletePivotTimerSection)
 	http.HandleFunc("/api/update_pivot_timer_section", handleUpdatePivotTimerSection)
+	http.HandleFunc("/api/sync_pivot", handleSyncPivot)
 	http.HandleFunc("/api/command", handleCommand)
 
 	fmt.Println("🚀 Server started on :8080")

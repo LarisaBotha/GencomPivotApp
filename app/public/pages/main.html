@@ -67,7 +67,7 @@
         <button 
             x-data="{ 
                 get command() { 
-                    return selectedPivot?.status?.state === 'Running' ? 'Stop' : 'Start' 
+                    return selectedPivot?.status?.state.trim().toLowerCase() === 'running' ? 'Stop' : 'Start' 
                 } 
             }"
             @click="
@@ -82,109 +82,12 @@
                 });
             "
             x-text="command"
-            :class="selectedPivot?.status?.state === 'Running' ? 'bg-red-500' : 'bg-blue-500'"
+            :class="selectedPivot?.status?.state.trim().toLowerCase() === 'running' ? 'bg-red-500' : 'bg-blue-500'"
             class="w-full text-white py-2 rounded text-lg font-bold cursor-pointer disabled:opacity-50 shadow-md"
             :disabled="!selectedPivot">
         </button>
 
-        <div 
-            x-data="{
-                sectionData: [],
-                async getPivotSpeedSections() {
-                    if (!selectedPivot?.id) return;
-                    try {
-                        let res = await fetch(`${API_URL}/api/get_pivot_timer_sections?pivot_id=${selectedPivot.id}`);
-                        if (res.ok) {
-                            let data = await res.json();
-                            if (data) this.sectionData = data;
-                        }
-                    } catch(err) {
-                        console.error('Status fetch error:', err);
-                    }
-                },
-                async onAddSection(args) {
-                    try {
-                        let res = await fetch(`${API_URL}/api/register_pivot_timer_section`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                pivot_id: selectedPivot.id,
-                                serial: args.serial,
-                                timer_pct: args.timer_pct,
-                                label: args.label,
-                                angle: args.angle_deg
-                            })
-                        });
-
-                        if (res.ok) {
-                            let data = await res.json();
-                            this.sectionData = data;
-                        }
-                    } catch (err) {
-                        console.error('Add section error:', err);
-                    }
-                },
-                async onDeleteSection(args) {
-                    try {
-                        let res = await fetch(`${API_URL}/api/delete_pivot_timer_section`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                pivot_id: selectedPivot.id,
-                                serial: args.serial
-                            })
-                        });
-
-                        if (res.ok) {
-                            let data = await res.json();
-                            this.sectionData = data;
-                        }
-                    } catch (err) {
-                        console.error('Delete section error:', err);
-                    }
-                },
-                async onEditSection(args) {
-                    let section = args.section;
-                    try {
-                        let res = await fetch(`${API_URL}/api/update_pivot_timer_section`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                pivot_id: selectedPivot.id,
-                                serial: section.serial,
-                                angle_deg: section.angle_deg,
-                                label: section.label,
-                                timer_pct: section.timer_pct
-                            })
-                        })
-
-                        if (!res.ok) {
-                            const text = await res.text()
-                            throw new Error(text)
-                        } else {
-                            args.onSuccess?.()
-                        }
-
-                        const updatedSections = await res.json()
-                        this.sectionData = updatedSections
-
-                    } catch (err) {
-                        console.error('Failed to update section:', err)
-                    }
-                }
-            }"
-            x-effect="getPivotSpeedSections()"
-            @on-delete.window="onDeleteSection($event.detail)"
-            @on-add.window="onAddSection($event.detail)"
-            @on-edit.window="onEditSection($event.detail)"
-            class="w-full h-[30%] flex items-center justify-center">
-            <pie-chart></pie-chart>
-        </div>
-        
-        <!-- Status cards -->
-        <div 
+        <div
             x-data="{ 
                 statusData: {},
                 formatLabel(key) {
@@ -204,18 +107,115 @@
                 }
             }" 
             x-effect="fetchPivotStatus()"
-            class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-5">
+        >
+            <div 
+                x-data="{
+                    sectionData: [],
+                    async getPivotSpeedSections() {
+                        if (!selectedPivot?.id) return;
+                        try {
+                            let res = await fetch(`${API_URL}/api/get_pivot_timer_sections?pivot_id=${selectedPivot.id}`);
+                            if (res.ok) {
+                                let data = await res.json();
+                                if (data) this.sectionData = data;
+                            }
+                        } catch(err) {
+                            console.error('Status fetch error:', err);
+                        }
+                    },
+                    async onAddSection(args) {
+                        try {
+                            let res = await fetch(`${API_URL}/api/register_pivot_timer_section`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    pivot_id: selectedPivot.id,
+                                    serial: args.serial,
+                                    timer_pct: args.timer_pct,
+                                    label: args.label,
+                                    angle: args.angle_deg
+                                })
+                            });
 
-            <template x-for="(value, key) in statusData" :key="key">
-                <template x-if="key !== 'pivot_id' && key !== 'id'">
-                    <div x-data="{heading: formatLabel(key), body: value}">
-                        <status-card></status-card>
-                    </div>
+                            if (res.ok) {
+                                let data = await res.json();
+                                this.sectionData = data;
+                            }
+                        } catch (err) {
+                            console.error('Add section error:', err);
+                        }
+                    },
+                    async onDeleteSection(args) {
+                        try {
+                            let res = await fetch(`${API_URL}/api/delete_pivot_timer_section`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    pivot_id: selectedPivot.id,
+                                    serial: args.serial
+                                })
+                            });
+
+                            if (res.ok) {
+                                let data = await res.json();
+                                this.sectionData = data;
+                            }
+                        } catch (err) {
+                            console.error('Delete section error:', err);
+                        }
+                    },
+                    async onEditSection(args) {
+                        console.log('EDIT' , args)
+                        let section = args.section;
+                        try {
+                            let res = await fetch(`${API_URL}/api/update_pivot_timer_section`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    pivot_id: selectedPivot.id,
+                                    serial: section.serial,
+                                    angle_deg: section.angle_deg,
+                                    label: section.label,
+                                    timer_pct: section.timer_pct
+                                })
+                            })
+
+                            if (!res.ok) {
+                                const text = await res.text()
+                                throw new Error(text)
+                            } else {
+                                args.onSuccess?.()
+                            }
+
+                            const updatedSections = await res.json()
+                            this.sectionData = updatedSections
+
+                        } catch (err) {
+                            console.error('Failed to update section:', err)
+                        }
+                    }
+                }"
+                x-effect="getPivotSpeedSections()"
+                @on-delete.window="onDeleteSection($event.detail)"
+                @on-add.window="onAddSection($event.detail)"
+                @on-edit.window="onEditSection($event.detail)"
+                class="w-full h-[30%] flex items-center justify-center">
+                <pie-chart></pie-chart>
+            </div>
+            
+            <!-- Status cards -->
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-5">
+                <template x-for="(value, key) in statusData" :key="key">
+                    <template x-if="key !== 'pivot_id' && key !== 'id'">
+                        <div x-data="{heading: formatLabel(key), body: value}">
+                            <status-card></status-card>
+                        </div>
+                    </template>
                 </template>
-            </template>
-
-        </div>
-
+            </div>
+        </div>      
     </div>  
 
     <div x-data="{
