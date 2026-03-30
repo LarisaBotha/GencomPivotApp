@@ -51,12 +51,22 @@ CREATE OR REPLACE FUNCTION set_next_pivot_serial()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.serial IS NULL THEN
-        SELECT COALESCE(MAX(serial), 0) + 1 
-        INTO NEW.serial 
-        FROM pivot_timer_sections 
-        WHERE pivot_id = NEW.pivot_id;
+        SELECT MIN(t.serial + 1)
+        INTO NEW.serial
+        FROM pivot_timer_sections t
+        WHERE t.pivot_id = NEW.pivot_id
+        AND NOT EXISTS (
+            SELECT 1
+            FROM pivot_timer_sections t2
+            WHERE t2.pivot_id = NEW.pivot_id
+            AND t2.serial = t.serial + 1
+        );
+
+        IF NEW.serial IS NULL THEN
+            NEW.serial := 1;
+        END IF;
     END IF;
-    
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -77,11 +87,6 @@ BEGIN
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_fill_serial_gaps
-AFTER DELETE ON pivot_timer_sections
-FOR EACH ROW
-EXECUTE FUNCTION fill_pivot_serial_gaps();
 
 CREATE TABLE pivot_status (
     pivot_id UUID PRIMARY KEY REFERENCES pivots(id) ON DELETE CASCADE,
@@ -107,5 +112,5 @@ AFTER INSERT ON pivots
 FOR EACH ROW
 EXECUTE FUNCTION create_pivot_status();
 
--- CREATE INDEX idx_pivot_command_queue_pivot_id ON pivot_command_queue(pivot_id);
--- CREATE INDEX idx_pivot_command_queue_executed ON pivot_command_queue(acknowledged);
+CREATE INDEX idx_pivot_command_queue_pivot_id ON pivot_command_queue(pivot_id);
+CREATE INDEX idx_pivot_command_queue_executed ON pivot_command_queue(acknowledged);

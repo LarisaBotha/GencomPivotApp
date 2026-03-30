@@ -37,6 +37,5 @@
 - PieChart must not always draggable, use another edit field?
 
 - 2) api documentation
-- 3) Hosting
 - 4) apk
 - dragging on mobile not working

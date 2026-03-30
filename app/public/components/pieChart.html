@@ -179,8 +179,8 @@
           />`;
         };
 
-        const pivotPosMarker = selectedPivot && statusData.position_deg != undefined ? (() => {
-          const pos = getArcPos(degToRad(statusData.position_deg), r);
+        const pivotPosMarker = selectedPivot &&selectedPivot.status && selectedPivot.status.position_deg != undefined ? (() => {
+          const pos = getArcPos(degToRad(selectedPivot.status.position_deg), r);
           const ballRadius = dragBallRadius/2;
 
           return `

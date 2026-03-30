@@ -523,11 +523,9 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("HERE")
-
 	// Decode body
 	var body struct {
-		PivotId    string   `json:"pivot_id"`
+		IMEI       string   `json:"imei"`
 		Position   *float64 `json:"position_deg"` // optional
 		Speed      *float64 `json:"speed_pct"`    // optional
 		Direction  *string  `json:"direction"`    // optional
@@ -541,14 +539,19 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("body ", body)
-
-	if body.PivotId == "" {
-		writeText(w, http.StatusBadRequest, "pivot_id required")
+	if body.IMEI == "" {
+		writeText(w, http.StatusBadRequest, "pivot imei required")
 		return
 	}
 
 	ctx := r.Context()
+
+	var pivotID string
+	err := DB.QueryRow(ctx, `SELECT id FROM pivots WHERE imei = $1`, body.IMEI).Scan(&pivotID)
+	if err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid IMEI")
+		return
+	}
 
 	// Begin transaction
 	tx, err := DB.Begin(ctx)
@@ -577,7 +580,7 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		body.Wet,
 		NormalizeString(body.Status),
 		body.BatteryPct,
-		body.PivotId,
+		pivotID,
 	)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update status: %v", err))
@@ -591,7 +594,7 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		WHERE pivot_id = $1 AND acknowledged = FALSE
 		ORDER BY created_at ASC
 		FOR UPDATE
-	`, body.PivotId)
+	`, pivotID)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, "Failed to fetch commands")
 		return
