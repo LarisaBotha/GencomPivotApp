@@ -35,7 +35,4 @@
 - Command for timer update
 - Move 0 degrees to top
 - PieChart must not always draggable, use another edit field?
-
-- 2) api documentation
-- 4) apk
-- dragging on mobile not working
+- dragging on mobile not working as smoothly as I want it

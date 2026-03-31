@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -194,6 +195,14 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pivots)
 }
 
+func queuePivotCommand(ctx context.Context, pivotID string, cmd string, payload *string) error {
+	_, err := DB.Exec(ctx, `
+        INSERT INTO pivot_command_queue (pivot_id, command, payload) 
+        VALUES ($1, $2, $3);`,
+		pivotID, cmd, payload)
+	return err
+}
+
 func handleCommand(w http.ResponseWriter, r *http.Request) {
 
 	// Handle Preflight
@@ -225,11 +234,15 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert (created_at is automatically populated)
-	if _, err := DB.Exec(r.Context(), `INSERT INTO pivot_command_queue (pivot_id, command, payload) VALUES ($1, $2, $3);`,
-		body.PivotId, body.Command, body.Payload); err != nil {
+	if err := queuePivotCommand(r.Context(), body.PivotId, body.Command, body.Payload); err != nil {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
 		return
 	}
+	// if _, err := DB.Exec(r.Context(), `INSERT INTO pivot_command_queue (pivot_id, command, payload) VALUES ($1, $2, $3);`,
+	// 	body.PivotId, body.Command, body.Payload); err != nil {
+	// 	writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
+	// 	return
+	// }
 
 	// Success
 	writeHeader(w, http.StatusOK)
@@ -493,10 +506,24 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return updated list
+	// Get Updated Pivot Timer Sections
 	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Temporary get string for sections
+	payloadBytes, err := json.Marshal(sections)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, "Failed to serialize payload")
+		return
+	}
+	payloadStr := string(payloadBytes)
+
+	// Register Update Command
+	if err := queuePivotCommand(r.Context(), args.PivotId, "UPDATE", &payloadStr); err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
 		return
 	}
 
