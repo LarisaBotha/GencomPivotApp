@@ -4,9 +4,22 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 )
 
-var Commands = []string{"Start", "Stop"}
+var Commands = []string{"Start", "Stop", "Update"}
+var Direction = []string{"forward", "reverse"}
+var Status = []string{"stopped", "running", "offline", "error"}
+
+type Subscriber struct {
+	pivotID string
+	send    chan []byte
+}
+
+var (
+	subscribers   = make(map[string][]*Subscriber)
+	subscribersMu sync.Mutex
+)
 
 func main() {
 	InitDB()

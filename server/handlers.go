@@ -248,33 +248,20 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 	writeHeader(w, http.StatusOK)
 }
 
-func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
+type PivotStatus struct {
+	PositionDeg float64 `json:"position_deg" db:"position_deg"`
+	SpeedPct    float64 `json:"speed_pct" db:"speed_pct"`
+	Direction   string  `json:"direction" db:"direction"`
+	Wet         bool    `json:"wet" db:"wet"`
+	Status      string  `json:"status" db:"status"`
+	Battery     float64 `json:"battery_pct" db:"battery_pct"`
+}
 
-	// Restrict to GET
-	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
-		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	// Decode Body
-	var args struct {
-		PivotId string `json:"pivot_id"`
-	}
-	if err := GetArguments(r, &args); err != nil {
-		writeText(w, http.StatusBadRequest, "Invalid arguments")
-		return
-	}
+func getPivotStatus(ctx context.Context, pivotID string) (*PivotStatus, error) {
 
 	// Fetch Status
-	var pivotStatus struct {
-		PositionDeg float64 `json:"position_deg" db:"position_deg"`
-		SpeedPct    float64 `json:"speed_pct" db:"speed_pct"`
-		Direction   string  `json:"direction" db:"direction"`
-		Wet         bool    `json:"wet" db:"wet"`
-		Status      string  `json:"status" db:"status"`
-		Battery     float64 `json:"battery_pct" db:"battery_pct"`
-	}
-	err := DB.QueryRow(r.Context(),
+	var pivotStatus PivotStatus
+	err := DB.QueryRow(ctx,
 		`SELECT 
 			position_deg, 
 			speed_pct, 
@@ -284,7 +271,7 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 			battery_pct
         FROM pivot_status
         WHERE pivot_id=$1`,
-		args.PivotId).Scan(
+		pivotID).Scan(
 		&pivotStatus.PositionDeg,
 		&pivotStatus.SpeedPct,
 		&pivotStatus.Direction,
@@ -292,13 +279,98 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 		&pivotStatus.Status,
 		&pivotStatus.Battery)
 	if err != nil {
-		log.Println("ERR STAT", err)
-		writeText(w, http.StatusNotFound, "Pivot Not Found")
+		return nil, err
+	}
+
+	return &pivotStatus, nil
+}
+
+func notifyStatusUpdate(ctx context.Context, pivotID string) {
+
+	pivotStatus, err := getPivotStatus(ctx, pivotID)
+	if err != nil {
+		log.Printf("SSE Broadcast Error: %v", err)
 		return
 	}
 
-	// Success
-	writeJSON(w, http.StatusOK, pivotStatus)
+	data, err := json.Marshal(pivotStatus)
+	if err != nil {
+		return
+	}
+
+	subscribersMu.Lock()
+	defer subscribersMu.Unlock()
+
+	if pivotSubscribers, ok := subscribers[pivotID]; ok {
+		for _, subscriber := range pivotSubscribers {
+			select {
+			case subscriber.send <- data:
+			default:
+				//TODO ? Drop if client is too slow to avoid blocking the sync process
+			}
+		}
+	}
+}
+
+func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
+
+	pivotID := r.URL.Query().Get("pivot_id")
+	if pivotID == "" {
+		http.Error(w, "pivot_id required", http.StatusBadRequest)
+		return
+	}
+
+	// Set SSE Headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	subscriber := &Subscriber{
+		pivotID: pivotID,
+		send:    make(chan []byte),
+	}
+
+	// Register client
+	subscribersMu.Lock()
+	subscribers[pivotID] = append(subscribers[pivotID], subscriber)
+	subscribersMu.Unlock()
+
+	// Unregister client on exit
+	defer func() {
+		subscribersMu.Lock()
+		list := subscribers[pivotID]
+		for i, c := range list {
+			if c == subscriber {
+				subscribers[pivotID] = append(list[:i], list[i+1:]...)
+				break
+			}
+		}
+		subscribersMu.Unlock()
+		close(subscriber.send)
+	}()
+
+	// Initial Response
+	pivotStatus, err := getPivotStatus(r.Context(), pivotID)
+	if err == nil {
+		if data, err := json.Marshal(pivotStatus); err == nil {
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			w.(http.Flusher).Flush()
+		}
+	} else {
+		log.Printf("Initial SSE status fetch failed: %v", err)
+	}
+
+	// Listen for data or connection close
+	for {
+		select {
+		case msg := <-subscriber.send:
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			w.(http.Flusher).Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
 }
 
 type TimerSection struct {
@@ -662,6 +734,8 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		writeText(w, http.StatusInternalServerError, "Failed to commit transaction")
 		return
 	}
+
+	go notifyStatusUpdate(context.Background(), pivotID)
 
 	writeJSON(w, http.StatusOK, commands)
 }

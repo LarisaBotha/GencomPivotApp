@@ -30,9 +30,8 @@
 - show ball angles while dragging
 - angle 2 decimal points
 - Handle failures
-- SSE for status updates
-- Pivot section deterministic colour
-- Command for timer update
 - Move 0 degrees to top
 - PieChart must not always draggable, use another edit field?
 - dragging on mobile not working as smoothly as I want it
+- use Status type in main.go
+- interpret error and offline pivot status

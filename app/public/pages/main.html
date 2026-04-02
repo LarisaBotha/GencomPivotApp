@@ -188,27 +188,40 @@
         <div 
             x-show="selectedPivot?.status"
             x-data="{ 
+                sseSource: null,
                 formatLabel(key) {
                     return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 },
-                async fetchPivotStatus() {
-                    if (!selectedPivot?.id) return;
-                    try {
-                        let res = await fetch(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
-                        if (res.ok) {
-                            let data = await res.json();
-                            if (data) selectedPivot.status = data;
-                        }
-                    } catch(err) {
-                        console.error('Status fetch error:', err);
+                connectSSE() {
+                    if (this.sseSource) {
+                        this.sseSource.close();
+                        this.sseSource = null;
                     }
+
+                    if (!selectedPivot?.id) return;
+
+                    this.sseSource = new EventSource(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
+
+                    this.sseSource.onmessage = (event) => {
+                        try {
+                            const newData = JSON.parse(event.data);
+                            selectedPivot.status = newData;
+                        } catch (err) {
+                            console.error('SSE Parse Error:', err);
+                        }
+                    };
+
+                    this.sseSource.onerror = (err) => {
+                        console.error('SSE Connection Error. Attempting to reconnect...', err);
+                    };
                 }
             }" 
-            x-effect="fetchPivotStatus()"
+            x-effect="connectSSE()"
             class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-5">
             <template x-for="(value, key) in selectedPivot?.status" :key="key">
                 <template x-if="key !== 'pivot_id' && key !== 'id'">
-                    <div x-data="{heading: formatLabel(key), body: value}">
+                    <div x-data="{ heading: '', body: '' }" 
+                        x-effect="heading = formatLabel(key); body = value">
                         <status-card></status-card>
                     </div>
                 </template>
