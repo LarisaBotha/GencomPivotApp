@@ -38,6 +38,7 @@
                     type="number"
                     :readonly="sectionData.length == 1"
                     x-model.number="editSection.startAngle"
+                    @input="editSection.startAngle = Math.round($event.target.value)"
                     class="w-full outline-none appearance-none"
                 >
                 <span class="text-gray-400 select-none ml-1">°</span>
@@ -47,8 +48,9 @@
             <label class="block text-sm font-semibold">End Angle</label>
             <div class="flex items-center w-full border rounded px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
                 <input 
-                    type="number" 
+                    type="number"
                     x-model.number="editSection.angle_deg"
+                    @input="editSection.angle_deg = Math.round($event.target.value)"
                     class="w-full outline-none appearance-none"
                 >
                 <span class="text-gray-400 select-none ml-1">°</span>

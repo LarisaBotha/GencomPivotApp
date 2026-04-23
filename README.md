@@ -22,16 +22,15 @@
 - Failed login message? Loading button with feedback?
 - Component.js must automatically create the components in the directory
 - Save credentials
-- local storage for last selected pivot
 - loading 
 - merge pivot and pivot_status tables
 - android app signing for release
 - modernise ui
 - show ball angles while dragging
-- angle 2 decimal points
 - Handle failures
-- Move 0 degrees to top
 - PieChart must not always draggable, use another edit field?
 - dragging on mobile not working as smoothly as I want it
 - use Status type in main.go
 - interpret error and offline pivot status
+- filter out the commands and only send what is neccessary?
+- logout ( localStorage.removeItem('last_user_id'); localStorage.removeItem('last_pivot_id'); )

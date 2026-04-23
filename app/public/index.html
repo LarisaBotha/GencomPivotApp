@@ -6,15 +6,20 @@
     <link rel="stylesheet" href="/css/app.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>
-      const API_URL = window.location.hostname === "localhost" ? "http://localhost:8080" : "https://pivot-api-of3d.onrender.com";
-      // const API_URL = "https://pivot-api-of3d.onrender.com";
+      // const API_URL = window.location.hostname === "localhost" ? "http://localhost:8080" : "https://pivot-api-of3d.onrender.com";
+      const API_URL = "https://pivot-api-of3d.onrender.com";
     </script>
   </head>
 
   <body class="w-full h-full overflow-y-auto" 
       x-data="{
-        user_id: '', 
-        currentView: 'login',
+        _user_id: localStorage.getItem('last_user_id'),
+        get user_id() { return this._user_id; },
+        set user_id(id) {
+          this._user_id = id;
+          localStorage.setItem('last_user_id', id);
+        },
+        get currentView() { return this._user_id ? 'main' : 'login'; },
         viewContent: '',
         
         async loadPage(pageName) {

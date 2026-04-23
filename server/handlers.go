@@ -585,8 +585,31 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Temporary get string for sections
-	payloadBytes, err := json.Marshal(sections)
+	type SectionsSimplified struct {
+		Start float64 `json:"start"`
+		End   float64 `json:"end"`
+	}
+
+	var simplifiedSections []SectionsSimplified
+
+	for i := range sections {
+		start := sections[i].Angle
+		var end float64
+
+		if i+1 < len(sections) {
+			end = sections[i+1].Angle
+		} else {
+			end = sections[0].Angle
+		}
+
+		simplifiedSections = append(simplifiedSections, SectionsSimplified{
+			Start: start,
+			End:   end,
+		})
+	}
+
+	// Serialize simplified sections
+	payloadBytes, err := json.Marshal(simplifiedSections)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, "Failed to serialize payload")
 		return

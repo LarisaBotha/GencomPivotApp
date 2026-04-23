@@ -52,7 +52,9 @@
             get onSuccess() { return bLogin ? 
                 async (response) => {
                     const result = await response.json();
-                    if (result.id != '') {user_id = result.id}
+                    if (result.id != '') {
+                        user_id = result.id;
+                    }
                     loadPage('main');
                 } : 
                 () => {

@@ -23,11 +23,15 @@
 
                 <template x-if="field.type === 'password'">
                     <button 
+                        :key="field.label"
                         type="button" 
                         @click="showPassword = !showPassword" 
                         class="absolute inset-y-0 right-0 flex items-center pr-4 cursor-pointer text-gray-700 hover:text-gray-900"
                     >
-                        <img :src="showPassword ? '../icons/eye_open.svg' : '../icons/eye_closed.svg'" class="w-5">
+                        <img x-show="showPassword" src="../icons/eye_open.svg" class="w-5">
+                        <img x-show="!showPassword" src="../icons/eye_closed.svg" class="w-5">
+                        <!-- BUGGY-->
+                        <!-- <img :src="showPassword ? '../icons/eye_open.svg' : '../icons/eye_closed.svg'" class="w-5"> -->
                     </button>
                 </template>
             </div>

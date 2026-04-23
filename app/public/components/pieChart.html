@@ -23,6 +23,7 @@
         y: this.height/2,
       }
     },
+    startOffset: Math.PI / 2,
     draggingIndex: null,
     activeIndex: null,
     get activeSectionRadius() { return this.r * 1.01 },
@@ -39,9 +40,10 @@
       return this.normalizeAngle(start + ((end - start + 2*Math.PI) % (2*Math.PI)) / 2)
     },
     getArcPos(angle, radius) {
+      const offsetAngle = angle - this.startOffset;
       return {
-        x : this.centre.x + Math.cos(angle) * radius, 
-        y : this.centre.y + Math.sin(angle) * radius
+        x : this.centre.x + Math.cos(offsetAngle) * radius, 
+        y : this.centre.y + Math.sin(offsetAngle) * radius
       }
     },
 
@@ -89,7 +91,7 @@
       const x = clientX - rect.left - this.centre.x;
       const y = clientY - rect.top - this.centre.y;
 
-      let angle = this.radToDeg(this.normalizeAngle(Math.atan2(y, x)));
+      let angle = this.radToDeg(this.normalizeAngle(Math.atan2(y, x) + this.startOffset));
 
       const current = this.sectionData[this.draggingIndex];
 
@@ -106,7 +108,7 @@
 
       angle = this.clampBetween(prevAngle + this.minSectionSize, nextAngle - this.minSectionSize, angle);
 
-      current.angle_deg = angle;
+      current.angle_deg = Math.round(angle);
     },
 
     drawSector(start, end, radius) {
@@ -115,7 +117,7 @@
       if (dDiff === 2 * Math.PI) {
         return `
           M ${this.centre.x},${this.centre.y}
-          m -${radius},0
+          m 0,-${radius}
           a ${radius},${radius} 0 1,0 ${radius*2},0
           a ${radius},${radius} 0 1,0 -${radius*2},0
         `

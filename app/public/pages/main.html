@@ -1,14 +1,30 @@
 <div class="w-full min-h-screen flex items-start justify-center" 
     x-data="{
         pivots: [],
-        selectedPivot: null,
+        _selectedPivot: null,
+        get selectedPivot() {
+            return this._selectedPivot;
+        },
+        set selectedPivot(pivot) {
+            this._selectedPivot = pivot;
+            localStorage.setItem('last_selected_pivot_id', pivot.id);
+        },
         bShowRegisterPivotModal: false,
         async fetchPivots() {
             try {
                 const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
                 if (res.ok) {
                     let data = await res.json();
-                    if (data) this.pivots = data;
+                    if (data) {
+                        this.pivots = data;
+
+                        const lastId = localStorage.getItem('last_selected_pivot_id');
+                        if (lastId && this.pivots.length > 0) {
+                            const pivot = this.pivots.find(p => p.id == lastId);
+                            if (pivot) 
+                                this.selectedPivot = pivot;
+                        }
+                    }
                 }
             } catch (err) {
                 console.error('Failed to load pivots', err);
