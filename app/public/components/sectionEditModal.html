@@ -16,7 +16,8 @@
               label: sectionData[activeIndex].label || '', 
               startAngle: startAngleIndex !== null ? sectionData[startAngleIndex].angle_deg : 0,
               angle_deg: sectionData[activeIndex].angle_deg,
-              timer_pct: sectionData[activeIndex].timer_pct
+              value: sectionData[activeIndex].value,
+              unit: sectionData[activeIndex].unit
           };
       }
   })"
@@ -59,14 +60,24 @@
       </div>
 
       <div>
-        <label class="block text-sm font-semibold">Timer Speed</label>
+        <label class="block text-sm font-semibold" x-text="editSection.unit == 'pct'? 'Timer Speed' : 'Application'"></label>
         <div class="flex items-center w-full border rounded px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
             <input 
                 type="number" 
-                x-model.number="editSection.timer_pct" 
+                x-model.number="editSection.value" 
                 class="w-full outline-none appearance-none"
             >
-            <span class="text-gray-400 select-none ml-1">%</span>
+            <span 
+                class="text-gray-400 select-none ml-1"
+                x-text="editSection.unit == 'pct' ? '%' : editSection.unit"
+                @click="() => {
+                    if (editSection.unit == 'pct') {
+                        editSection.unit = 'mm'
+                    } else {
+                        editSection.unit = 'pct'
+                    }
+                }"
+            ></span>
         </div>
       </div>
     </div>
@@ -77,7 +88,7 @@
         @click="() => {
             if (sectionData[activeIndex].label != editSection.label || 
                 sectionData[activeIndex].angle_deg != editSection.endAngle || 
-                sectionData[activeIndex].timer_pct != editSection.timer) {
+                sectionData[activeIndex].value != editSection.value) {
                 
                 window.dispatchEvent(new CustomEvent('on-edit', { 
                     detail: { 

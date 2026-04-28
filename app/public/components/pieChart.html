@@ -114,13 +114,13 @@
     drawSector(start, end, radius) {
       const dDiff = this.normalizeAngle(end - start)
 
-      if (dDiff === 2 * Math.PI) {
+      if (sectionData.length === 1) {
         return `
-          M ${this.centre.x},${this.centre.y}
-          m 0,-${radius}
-          a ${radius},${radius} 0 1,0 ${radius*2},0
-          a ${radius},${radius} 0 1,0 -${radius*2},0
-        `
+          M ${this.centre.x}, ${this.centre.y - radius}
+          A ${radius} ${radius} 0 1 1 ${this.centre.x}, ${this.centre.y + radius}
+          A ${radius} ${radius} 0 1 1 ${this.centre.x}, ${this.centre.y - radius}
+          Z
+        `;
       }
 
       const { x: StartX, y: StartY } = this.getArcPos(start, radius)
@@ -241,7 +241,7 @@
                   </div>`
                   : ''}
                 <div style='background-color: ${colour}' class='px-2 text-white rounded-md text-[10px] flex items-center justify-center shadow'>
-                  ${s.timer_pct}%
+                 ${s.value}${s.unit === 'pct' ? '%' : s.unit}
                 </div>
               </div>
             </foreignObject>

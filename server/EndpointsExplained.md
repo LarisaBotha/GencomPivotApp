@@ -43,12 +43,13 @@ PONG - 2026-03-30T15:00:00Z
 **Arguments / Body:**
 
 - imei (String) - Pivot identifier (Required) 
-- position_deg (Float) - Current pivot angle
-- speed_pct (Float) - Current speed percentage
-- direction (String) - 'forward' OR 'reverse'
-- status (String) - 'running' OR 'stopped' OR 'error' OR 'offline'
-- battery_pct (Float) - Battery level
-- wet (Bool)
+- position_deg (Float) - Current pivot angle (Optional)
+- speed_pct (Float) - Current speed percentage (Optional)
+- direction (String) - 'forward' OR 'reverse' (Optional)
+- status (String) - 'running' OR 'stopped' OR 'error' OR 'offline' (Optional)
+- battery_pct (Float) - Battery level (Optional)
+- wet (Bool) (Optional)
+- pressure (Float) - Current water pressure (Optional)
 
 **Response:** A JSON array of newly acknowledged command objects.
 
@@ -73,9 +74,48 @@ Response:
 ```
 HTTP/1.1 200 OK
 Content-Type: application/json
-Content-Length: 54
+Content-Length: 124
 Connection: close
 
-[{"id": 102, "command": "Stop", "payload": null}]
+[
+  {
+    "id": 1,
+    "command": "UPDATE",
+    "payload": "[{\"start\":0,\"end\":90,\"value\":10.5,\"unit\":\"mm\"},{\"start\":90,\"end\":0,\"value\":5.0,\"unit\":\"mm\"}]"
+  }
+]
 ```
 
+# Get Online Users
+
+**Access URL:** https://pivot-api-of3d.onrender.com/api/get_subscriber_count
+
+**Purpose / Use:** Returns the number of active SSE (Server-Sent Events) connections for a specific pivot. This is useful for monitoring how many clients are currently watching a pivot's status in real-time.
+
+**Request Type / Method:** GET
+
+**Arguments / Body:**
+
+- imei (String) - Pivot identifier (Required) 
+
+**Response:** A JSON object containing the current count of active subscribers.
+
+**Example:**
+
+Request:
+```
+GET /api/subscriber_count?imei=864201040000001 HTTP/1.1
+Host: pivot-api-of3d.onrender.com
+```
+
+Response:
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 62
+Connection: close
+
+{
+  "count": 3
+}
+```

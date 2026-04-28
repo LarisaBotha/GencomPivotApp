@@ -255,6 +255,7 @@ type PivotStatus struct {
 	Wet         bool    `json:"wet" db:"wet"`
 	Status      string  `json:"status" db:"status"`
 	Battery     float64 `json:"battery_pct" db:"battery_pct"`
+	Pressure    float64 `json:"pressure" db:"pressure"`
 }
 
 func getPivotStatus(ctx context.Context, pivotID string) (*PivotStatus, error) {
@@ -268,7 +269,8 @@ func getPivotStatus(ctx context.Context, pivotID string) (*PivotStatus, error) {
 			direction::text, 
 			wet, 
 			status::text, 
-			battery_pct
+			battery_pct,
+			pressure
         FROM pivot_status
         WHERE pivot_id=$1`,
 		pivotID).Scan(
@@ -277,7 +279,9 @@ func getPivotStatus(ctx context.Context, pivotID string) (*PivotStatus, error) {
 		&pivotStatus.Direction,
 		&pivotStatus.Wet,
 		&pivotStatus.Status,
-		&pivotStatus.Battery)
+		&pivotStatus.Battery,
+		&pivotStatus.Pressure,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -373,19 +377,20 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type TimerSection struct {
-	Serial   int     `json:"serial"`
-	SpeedPct float64 `json:"timer_pct"`
-	Label    *string `json:"label"`
-	Angle    float64 `json:"angle_deg"`
+type PivotSection struct {
+	Serial int     `json:"serial"`
+	Value  float64 `json:"value"`
+	Label  *string `json:"label"`
+	Angle  float64 `json:"angle_deg"`
+	Unit   string  `json:"unit"`
 }
 
-func getPivotTimerSections(context context.Context, pivotId string) ([]TimerSection, error) {
-	sections := []TimerSection{}
+func getPivotSections(context context.Context, pivotId string) ([]PivotSection, error) {
+	sections := []PivotSection{}
 
 	rows, err := DB.Query(context,
-		`SELECT serial, timer_pct, label, angle_deg 
-			FROM pivot_timer_sections 
+		`SELECT serial, value, label, angle_deg, unit
+			FROM pivot_sections 
 			WHERE pivot_id = $1 
 			ORDER BY angle_deg ASC`, pivotId)
 	if err != nil {
@@ -394,8 +399,8 @@ func getPivotTimerSections(context context.Context, pivotId string) ([]TimerSect
 	defer rows.Close()
 
 	for rows.Next() {
-		var s TimerSection
-		if err := rows.Scan(&s.Serial, &s.SpeedPct, &s.Label, &s.Angle); err != nil {
+		var s PivotSection
+		if err := rows.Scan(&s.Serial, &s.Value, &s.Label, &s.Angle, &s.Unit); err != nil {
 			return sections, fmt.Errorf("Scan error")
 		}
 		sections = append(sections, s)
@@ -404,7 +409,7 @@ func getPivotTimerSections(context context.Context, pivotId string) ([]TimerSect
 	return sections, nil
 }
 
-func handleGetPivotTimerSections(w http.ResponseWriter, r *http.Request) {
+func handleGetPivotSections(w http.ResponseWriter, r *http.Request) {
 
 	// Restrict to GET
 	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
@@ -420,7 +425,7 @@ func handleGetPivotTimerSections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	sections, err := getPivotSections(r.Context(), args.PivotId)
 	if err != nil {
 		writeText(w, http.StatusBadRequest, err.Error())
 		return
@@ -430,7 +435,7 @@ func handleGetPivotTimerSections(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handleRegisterPivotTimerSection(w http.ResponseWriter, r *http.Request) {
+func handleRegisterPivotSection(w http.ResponseWriter, r *http.Request) {
 
 	// Handle Preflight
 	if r.Method == http.MethodOptions {
@@ -445,11 +450,11 @@ func handleRegisterPivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var args struct {
-		PivotId  string   `json:"pivot_id"`
-		SpeedPct *float64 `json:"timer_pct"`
-		Serial   *int     `json:"serial"` // optional
-		Label    *string  `json:"label"`  // optional
-		Angle    float64  `json:"angle"`  // optional
+		PivotId string   `json:"pivot_id"`
+		Value   *float64 `json:"value"`
+		Serial  *int     `json:"serial"` // optional
+		Label   *string  `json:"label"`  // optional
+		Angle   float64  `json:"angle"`  // optional
 	}
 
 	if err := GetArguments(r, &args); err != nil {
@@ -458,14 +463,14 @@ func handleRegisterPivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := DB.Exec(r.Context(), `
-		INSERT INTO pivot_timer_sections (pivot_id, serial, timer_pct, label, angle_deg)
+		INSERT INTO pivot_sections (pivot_id, serial, value, label, angle_deg)
 			VALUES ($1, $2, COALESCE($3, 100.0), $4, $5)
 			ON CONFLICT (pivot_id, serial) 
 			DO UPDATE SET 
-				timer_pct = COALESCE($3, pivot_timer_sections.timer_pct),
-				label     = COALESCE($4, pivot_timer_sections.label),
+				value	  = COALESCE($3, pivot_sections.value),
+				label     = COALESCE($4, pivot_sections.label),
 				angle_deg = $5`,
-		args.PivotId, args.Serial, args.SpeedPct, args.Label, args.Angle)
+		args.PivotId, args.Serial, args.Value, args.Label, args.Angle)
 
 	if err != nil {
 		log.Println("ERR: ", err)
@@ -473,7 +478,7 @@ func handleRegisterPivotTimerSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	sections, err := getPivotSections(r.Context(), args.PivotId)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, err.Error())
 		return
@@ -482,7 +487,7 @@ func handleRegisterPivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sections)
 }
 
-func handleDeletePivotTimerSection(w http.ResponseWriter, r *http.Request) {
+func handleDeletePivotSection(w http.ResponseWriter, r *http.Request) {
 
 	// Handle Preflight
 	if r.Method == http.MethodOptions {
@@ -507,7 +512,7 @@ func handleDeletePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := DB.Exec(r.Context(), `
-		DELETE FROM pivot_timer_sections
+		DELETE FROM pivot_sections
 		WHERE pivot_id = $1 AND serial = $2`,
 		args.PivotId, args.Serial)
 
@@ -516,7 +521,7 @@ func handleDeletePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	sections, err := getPivotSections(r.Context(), args.PivotId)
 	if err != nil {
 		writeText(w, http.StatusBadRequest, err.Error())
 		return
@@ -525,7 +530,7 @@ func handleDeletePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sections)
 }
 
-func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
+func handleUpdatePivotSection(w http.ResponseWriter, r *http.Request) {
 
 	// Handle Preflight
 	if r.Method == http.MethodOptions {
@@ -540,11 +545,12 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var args struct {
-		PivotId  string   `json:"pivot_id"`
-		Serial   int      `json:"serial"`
-		SpeedPct *float64 `json:"timer_pct"` // optional
-		Label    *string  `json:"label"`     // optional
-		Angle    *float64 `json:"angle_deg"` // optional
+		PivotId string   `json:"pivot_id"`
+		Serial  int      `json:"serial"`
+		Value   *float64 `json:"value"`     // optional
+		Label   *string  `json:"label"`     // optional
+		Angle   *float64 `json:"angle_deg"` // optional
+		Unit    *string  `json:"unit"`      // optional
 	}
 
 	if err := GetArguments(r, &args); err != nil {
@@ -559,16 +565,18 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 
 	// Update only provided fields
 	_, err := DB.Exec(r.Context(), `
-		UPDATE pivot_timer_sections
+		UPDATE pivot_sections
 		SET
-			timer_pct = COALESCE($1, timer_pct),
+			value 	  = COALESCE($1, value),
 			label     = COALESCE($2, label),
-			angle_deg = COALESCE($3, angle_deg)
-		WHERE pivot_id = $4 AND serial = $5
+			angle_deg = COALESCE($3, angle_deg),
+			unit 	  = COALESCE($4, unit)
+		WHERE pivot_id = $5 AND serial = $6
 	`,
-		args.SpeedPct,
+		args.Value,
 		args.Label,
 		args.Angle,
+		args.Unit,
 		args.PivotId,
 		args.Serial,
 	)
@@ -578,8 +586,8 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get Updated Pivot Timer Sections
-	sections, err := getPivotTimerSections(r.Context(), args.PivotId)
+	// Get Updated Pivot Sections
+	sections, err := getPivotSections(r.Context(), args.PivotId)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, err.Error())
 		return
@@ -588,6 +596,8 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	type SectionsSimplified struct {
 		Start float64 `json:"start"`
 		End   float64 `json:"end"`
+		Value float64 `json:"value"`
+		Unit  string  `json:"unit"`
 	}
 
 	var simplifiedSections []SectionsSimplified
@@ -605,6 +615,8 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 		simplifiedSections = append(simplifiedSections, SectionsSimplified{
 			Start: start,
 			End:   end,
+			Value: sections[i].Value,
+			Unit:  sections[i].Unit,
 		})
 	}
 
@@ -623,6 +635,15 @@ func handleUpdatePivotTimerSection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, sections)
+}
+
+func getPivotIDByIMEI(ctx context.Context, imei string) (string, error) {
+	var id string
+	err := DB.QueryRow(ctx, `SELECT id FROM pivots WHERE imei = $1`, imei).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 type Command struct {
@@ -668,8 +689,7 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	var pivotID string
-	err := DB.QueryRow(ctx, `SELECT id FROM pivots WHERE imei = $1`, body.IMEI).Scan(&pivotID)
+	pivotID, err := getPivotIDByIMEI(ctx, body.IMEI)
 	if err != nil {
 		writeText(w, http.StatusBadRequest, "Invalid IMEI")
 		return
@@ -761,4 +781,93 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 	go notifyStatusUpdate(context.Background(), pivotID)
 
 	writeJSON(w, http.StatusOK, commands)
+}
+
+func handleGetSubscriberCount(w http.ResponseWriter, r *http.Request) {
+
+	// Restrict to GET
+	if r.Method != http.MethodGet && r.Method != http.MethodOptions {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Get arguments
+	var args struct {
+		IMEI string `json:"imei"`
+	}
+	if err := GetArguments(r, &args); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid arguments")
+		return
+	}
+
+	// Find Pivot Id by imei
+	pivotID, err := getPivotIDByIMEI(r.Context(), args.IMEI)
+	if err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid IMEI")
+		return
+	}
+
+	subscribersMu.Lock()
+	count := 0
+	if list, ok := subscribers[pivotID]; ok {
+		count = len(list)
+	}
+	subscribersMu.Unlock()
+
+	// Return the count
+	writeJSON(w, http.StatusOK, map[string]int{
+		"count": count,
+	})
+}
+
+func handleUpdatePivotControl(w http.ResponseWriter, r *http.Request) {
+
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Decode Body
+	var body struct {
+		PivotId   string  `json:"pivot_id"`
+		Direction *string `json:"direction"`
+		Wet       *bool   `json:"wet"`
+	}
+
+	if err := GetArguments(r, &body); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if body.PivotId == "" {
+		writeText(w, http.StatusBadRequest, "pivot_id is required")
+		return
+	}
+
+	// Update
+	_, err := DB.Exec(r.Context(), `
+		UPDATE pivot_status 
+		SET 
+			direction = COALESCE($1, direction),
+			wet = COALESCE($2, wet),
+			updated_at = NOW()
+		WHERE pivot_id = $3`,
+		NormalizeString(body.Direction),
+		body.Wet,
+		body.PivotId,
+	)
+
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update status: %v", err))
+		return
+	}
+
+	writeHeader(w, http.StatusOK)
 }

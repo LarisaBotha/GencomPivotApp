@@ -34,3 +34,8 @@
 - interpret error and offline pivot status
 - filter out the commands and only send what is neccessary?
 - logout ( localStorage.removeItem('last_user_id'); localStorage.removeItem('last_pivot_id'); )
+- button click animation
+- confirm/acknowledge endpoints
+- switch between timer % and application mm
+- make toggle component
+- clear register pivot modal on success

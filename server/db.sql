@@ -6,8 +6,10 @@ DROP TABLE IF EXISTS users;
 
 DROP TYPE IF EXISTS pivot_system_status;
 DROP TYPE IF EXISTS pivot_direction;
+DROP TYPE IF EXISTS section_unit;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+CREATE TYPE section_unit AS ENUM ('mm', 'pct');
 CREATE TYPE pivot_direction AS ENUM ('forward', 'reverse');
 CREATE TYPE pivot_system_status AS ENUM ('running', 'stopped', 'error', 'offline');
 
@@ -38,10 +40,11 @@ CREATE TABLE pivot_command_queue (
     acknowledged_at TIMESTAMP
 );
 
-CREATE TABLE pivot_timer_sections (
+CREATE TABLE pivot_sections (
     pivot_id UUID REFERENCES pivots(id) ON DELETE CASCADE,
     serial INT NOT NULL,
-    timer_pct FLOAT NOT NULL DEFAULT 100.0,
+    value FLOAT NOT NULL DEFAULT 0,
+    unit section_unit NOT NULL DEFAULT 'pct',
     label TEXT,
     angle_deg FLOAT NOT NULL DEFAULT 360.0,
     PRIMARY KEY (pivot_id, serial)
@@ -53,11 +56,11 @@ BEGIN
     IF NEW.serial IS NULL THEN
         SELECT MIN(t.serial + 1)
         INTO NEW.serial
-        FROM pivot_timer_sections t
+        FROM pivot_sections t
         WHERE t.pivot_id = NEW.pivot_id
         AND NOT EXISTS (
             SELECT 1
-            FROM pivot_timer_sections t2
+            FROM pivot_sections t2
             WHERE t2.pivot_id = NEW.pivot_id
             AND t2.serial = t.serial + 1
         );
@@ -72,14 +75,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_auto_serial
-BEFORE INSERT ON pivot_timer_sections
+BEFORE INSERT ON pivot_sections
 FOR EACH ROW
 EXECUTE FUNCTION set_next_pivot_serial();
 
 CREATE OR REPLACE FUNCTION fill_pivot_serial_gaps()
 RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE pivot_timer_sections
+    UPDATE pivot_sections
     SET serial = serial - 1
     WHERE pivot_id = OLD.pivot_id
       AND serial > OLD.serial;
@@ -95,6 +98,7 @@ CREATE TABLE pivot_status (
     direction pivot_direction NOT NULL DEFAULT 'forward',
     wet BOOLEAN NOT NULL DEFAULT false,
     status pivot_system_status NOT NULL DEFAULT 'offline',
+    pressure FLOAT NOT NULL DEFAULT 0,
     battery_pct FLOAT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
