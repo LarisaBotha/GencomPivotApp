@@ -26,16 +26,11 @@
 - merge pivot and pivot_status tables
 - android app signing for release
 - modernise ui
-- show ball angles while dragging
 - Handle failures
 - PieChart must not always draggable, use another edit field?
 - dragging on mobile not working as smoothly as I want it
-- use Status type in main.go
 - interpret error and offline pivot status
-- filter out the commands and only send what is neccessary?
-- logout ( localStorage.removeItem('last_user_id'); localStorage.removeItem('last_pivot_id'); )
 - button click animation
-- confirm/acknowledge endpoints
 - switch between timer % and application mm
+- push notifications
 - make toggle component
-- clear register pivot modal on success

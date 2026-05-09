@@ -1,333 +1,334 @@
-<div class="w-full min-h-screen flex items-start justify-center" 
-    x-data="{
-        pivots: [],
-        _selectedPivot: null,
-        get selectedPivot() {
-            return this._selectedPivot;
-        },
-        set selectedPivot(pivot) {
-            this._selectedPivot = pivot;
-            localStorage.setItem('last_selected_pivot_id', pivot.id);
-        },
-        bShowRegisterPivotModal: false,
-        async fetchPivots() {
-            try {
-                const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
-                if (res.ok) {
-                    let data = await res.json();
-                    if (data) {
-                        this.pivots = data;
+<div class="w-full min-h-screen flex flex-col justify-between">
+    <div class="flex items-start justify-center" 
+        x-data="{
+            pivots: [],
+            _selectedPivot: null,
+            get selectedPivot() {
+                return this._selectedPivot;
+            },
+            set selectedPivot(pivot) {
+                this._selectedPivot = pivot;
+                localStorage.setItem('last_selected_pivot_id', pivot.id);
+            },
+            bShowRegisterPivotModal: false,
+            async fetchPivots() {
+                try {
+                    const res = await fetch(`${API_URL}/api/get_user_pivots?user_id=${user_id}`);
+                    if (res.ok) {
+                        let data = await res.json();
+                        if (data) {
+                            this.pivots = data;
 
-                        const lastId = localStorage.getItem('last_selected_pivot_id');
-                        if (lastId && this.pivots.length > 0) {
-                            const pivot = this.pivots.find(p => p.id == lastId);
-                            if (pivot) 
-                                this.selectedPivot = pivot;
+                            const lastId = localStorage.getItem('last_selected_pivot_id');
+                            if (lastId && this.pivots.length > 0) {
+                                const pivot = this.pivots.find(p => p.id == lastId);
+                                if (pivot) 
+                                    this.selectedPivot = pivot;
+                            }
                         }
                     }
+                } catch (err) {
+                    console.error('Failed to load pivots', err);
                 }
-            } catch (err) {
-                console.error('Failed to load pivots', err);
             }
-        }
-    }"
-    x-init="fetchPivots">
-    <div class="flex flex-col lg:w-[60%] xl:w-[50%] p-10 gap-2">
-        <div class="flex items-center gap-2">
+        }"
+        x-init="fetchPivots">
+        <div class="flex flex-col lg:w-[60%] xl:w-[50%] p-10 gap-2">
+            <div class="flex items-center gap-2">
 
-            <div class="relative flex-1" x-data="{ open: false }">
-                <button 
-                    id="pivotSelect" 
-                    @click="open = !open"
-                    @click.away="open = false"
-                    class="w-full flex justify-between items-center shadow-md rounded px-3 py-1 cursor-pointer bg-white"
-                    type="button">
-                    <span x-text="selectedPivot?.name || 'Select Pivot'"></span>
-                    <img :src="'../icons/chevron_down.svg'" class="w-5" :class="open && 'rotate-180'">
-                </button>
-
-                <div 
-                    x-show="open" 
-                    x-transition
-                    class="absolute z-10 top-full left-0 w-full mt-1 bg-white rounded-lg shadow-lg"
-                    style="display: none;"
-                >
-                    <ul class="p-2 text-sm font-medium">
-                        <template x-for="pivot in pivots" :key="pivot.id">
-                            <li>
-                                <button 
-                                    @click="selectedPivot = pivot; open = false" 
-                                    class="inline-flex items-center w-full p-2 hover:bg-neutral-tertiary-medium rounded text-left"
-                                    x-text="pivot.name">
-                                </button>
-                            </li>
-                        </template>
-                        
-                        <template x-if="pivots.length === 0">
-                            <li class="p-2 text-gray-400 italic">No pivots found</li>
-                        </template>
-                    </ul>
-                </div>
-            </div>
-
-            <button 
-                class="self-stretch bg-white rounded cursor-pointer shadow-sm"
-                @click="bShowRegisterPivotModal = true"
-                style="aspect-ratio: 1;"
-            >
-                <img :src="'../icons/plus.svg'" class="w-8">
-            </button>
-        </div>
-
-        <!-- Start/Stop button -->
-        <button 
-            x-data="{ 
-                get command() { 
-                    return selectedPivot?.status?.status.trim().toLowerCase() === 'running' ? 'Stop' : 'Start' 
-                } 
-            }"
-            @click="
-                if(!selectedPivot) return;
-                const response = await fetch(`${API_URL}/api/command`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({
-                        pivot_id: selectedPivot.id,
-                        command: command
-                    })
-                });
-            "
-            x-text="command"
-            :class="selectedPivot?.status?.status.trim().toLowerCase() === 'running' ? 'bg-red-500' : 'bg-blue-500'"
-            class="w-full text-white py-2 rounded text-lg font-bold cursor-pointer disabled:opacity-50 shadow-md"
-            :disabled="!selectedPivot">
-        </button>
-
-
-        <div 
-            x-data="{
-                sectionData: [],
-                async getPivotSpeedSections() {
-                    if (!selectedPivot?.id) return;
-                    try {
-                        let res = await fetch(`${API_URL}/api/get_pivot_sections?pivot_id=${selectedPivot.id}`);
-                        if (res.ok) {
-                            let data = await res.json();
-                            if (data) this.sectionData = data;
-                        }
-                    } catch(err) {
-                        console.error('Status fetch error:', err);
-                    }
-                },
-                async onAddSection(args) {
-                    try {
-                        let res = await fetch(`${API_URL}/api/register_pivot_section`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                pivot_id: selectedPivot.id,
-                                serial: args.serial,
-                                value: args.value,
-                                label: args.label,
-                                angle: args.angle_deg
-                            })
-                        });
-
-                        if (res.ok) {
-                            let data = await res.json();
-                            this.sectionData = data;
-                        }
-                    } catch (err) {
-                        console.error('Add section error:', err);
-                    }
-                },
-                async onDeleteSection(args) {
-                    try {
-                        let res = await fetch(`${API_URL}/api/delete_pivot_section`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                pivot_id: selectedPivot.id,
-                                serial: args.serial
-                            })
-                        });
-
-                        if (res.ok) {
-                            let data = await res.json();
-                            this.sectionData = data;
-                        }
-                    } catch (err) {
-                        console.error('Delete section error:', err);
-                    }
-                },
-                async onEditSection(args) {
-                    let section = args.section;
-                    try {
-                        let res = await fetch(`${API_URL}/api/update_pivot_section`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                pivot_id: selectedPivot.id,
-                                serial: section.serial,
-                                angle_deg: section.angle_deg,
-                                label: section.label,
-                                value: section.value,
-                                unit: section.unit
-                            })
-                        })
-
-                        if (!res.ok) {
-                            const text = await res.text()
-                            throw new Error(text)
-                        } else {
-                            args.onSuccess?.()
-                        }
-
-                        const updatedSections = await res.json()
-                        this.sectionData = updatedSections
-
-                    } catch (err) {
-                        console.error('Failed to update section:', err)
-                    }
-                }
-            }"
-            x-effect="getPivotSpeedSections()"
-            @on-delete.window="onDeleteSection($event.detail)"
-            @on-add.window="onAddSection($event.detail)"
-            @on-edit.window="onEditSection($event.detail)"
-            class="w-full h-[30%] flex items-center justify-center">
-            <pie-chart></pie-chart>
-        </div>
-        
-        <!-- Status cards -->
-        <div 
-            x-show="selectedPivot?.status"
-            x-data="{ 
-                sseSource: null,
-                formatLabel(key) {
-                    return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                },
-                connectSSE() {
-                    if (this.sseSource) {
-                        this.sseSource.close();
-                        this.sseSource = null;
-                    }
-
-                    if (!selectedPivot?.id) return;
-
-                    this.sseSource = new EventSource(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
-
-                    this.sseSource.onmessage = (event) => {
-                        try {
-                            const newData = JSON.parse(event.data);
-                            selectedPivot.status = newData;
-                        } catch (err) {
-                            console.error('SSE Parse Error:', err);
-                        }
-                    };
-
-                    this.sseSource.onerror = (err) => {
-                        console.error('SSE Connection Error. Attempting to reconnect...', err);
-                    };
-                },
-                async toggleControl(key, newValue) {
-                    if (!this.selectedPivot?.status) return;
-
-                    const oldValue = this.selectedPivot.status[key];
-                    this.selectedPivot.status[key] = newValue;
-
-                    try {
-                        const res = await fetch(`${API_URL}/api/update_pivot_control`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                pivot_id: this.selectedPivot.id,
-                                [key]: newValue
-                            })
-                        });
-
-                        if (!res.ok) throw new Error('Server error');
-                        
-                    } catch (err) {
-                        this.selectedPivot.status[key] = oldValue;
-                    }
-                }
-            }" 
-            x-effect="connectSSE()"
-            class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-5">
-
-            <div class="flex flex-col gap-1">
-                <label class="text-xs font-bold text-gray-500 uppercase">Control</label>
-                <div class="flex bg-gray-200 rounded p-1 shadow-inner h-10">
+                <div class="relative flex-1" x-data="{ open: false }">
                     <button 
-                        @click="toggleControl('wet', true)"
-                        class="flex-1 rounded text-sm font-bold transition-all"
-                        :class="selectedPivot?.status?.wet ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
-                    >Wet</button>
-                    <button 
-                        @click="toggleControl('wet', false)"
-                        class="flex-1 rounded text-sm font-bold transition-all"
-                        :class="!selectedPivot?.status?.wet ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
-                    >Dry</button>
-                </div>
-            </div>
+                        id="pivotSelect" 
+                        @click="open = !open"
+                        @click.away="open = false"
+                        class="w-full flex justify-between items-center shadow-md rounded px-3 py-1 cursor-pointer bg-white"
+                        type="button">
+                        <span x-text="selectedPivot?.name || 'Select Pivot'"></span>
+                        <img :src="'../icons/chevron_down.svg'" class="w-5" :class="open && 'rotate-180'">
+                    </button>
 
-            <div class="flex flex-col gap-1">
-                <label class="text-xs font-bold text-gray-500 uppercase">Direction</label>
-                <div class="flex bg-gray-200 rounded p-1 shadow-inner h-10">
-                    <button 
-                        @click="toggleControl('direction', 'forward')"
-                        class="flex-1 rounded text-sm font-bold transition-all"
-                        :class="selectedPivot?.status?.direction == 'forward' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
-                    >Forward</button>
-                    <button 
-                        @click="toggleControl('direction', 'reverse')"
-                        class="flex-1 rounded text-sm font-bold transition-all"
-                        :class="selectedPivot?.status?.direction == 'reverse' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
-                    >Reverse</button>
-                </div>
-            </div>
-
-            <template x-for="(value, key) in selectedPivot?.status" :key="key">
-                <template x-if="!['pivot_id', 'id', 'wet', 'direction'].includes(key)">
-                    <div x-data="{ heading: '', body: '' }" 
-                        x-effect="heading = formatLabel(key); body = value">
-                        <status-card></status-card>
+                    <div 
+                        x-show="open" 
+                        x-transition
+                        class="absolute z-10 top-full left-0 w-full mt-1 bg-white rounded-lg shadow-lg"
+                        style="display: none;"
+                    >
+                        <ul class="p-2 text-sm font-medium">
+                            <template x-for="pivot in pivots" :key="pivot.id">
+                                <li>
+                                    <button 
+                                        @click="selectedPivot = pivot; open = false" 
+                                        class="inline-flex items-center w-full p-2 hover:bg-neutral-tertiary-medium rounded text-left"
+                                        x-text="pivot.name">
+                                    </button>
+                                </li>
+                            </template>
+                            
+                            <template x-if="pivots.length === 0">
+                                <li class="p-2 text-gray-400 italic">No pivots found</li>
+                            </template>
+                        </ul>
                     </div>
-                </template>
-            </template>
-        </div>
-     
-    </div>  
+                </div>
 
-    <div x-data="{
-        get bShow() { return bShowRegisterPivotModal }, 
-        set bShow(val) { bShowRegisterPivotModal = val }
-    }"
-    @success="
-        bShow = false;
-        fetchPivots();
-    ">
-        <register-pivot-modal/>
+                <button 
+                    class="self-stretch bg-white rounded cursor-pointer shadow-sm"
+                    @click="bShowRegisterPivotModal = true"
+                    style="aspect-ratio: 1;"
+                >
+                    <img :src="'../icons/plus.svg'" class="w-8">
+                </button>
+            </div>
+
+            <!-- Start/Stop button -->
+            <button 
+                x-data="{ 
+                    get command() { 
+                        return selectedPivot?.status?.status.trim().toLowerCase() === 'running' ? 'Stop' : 'Start' 
+                    } 
+                }"
+                @click="
+                    if(!selectedPivot) return;
+                    const response = await fetch(`${API_URL}/api/command`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: new URLSearchParams({
+                            pivot_id: selectedPivot.id,
+                            command: command
+                        })
+                    });
+                "
+                x-text="command"
+                :class="selectedPivot?.status?.status.trim().toLowerCase() === 'running' ? 'bg-red-500' : 'bg-blue-500'"
+                class="w-full text-white py-2 rounded text-lg font-bold cursor-pointer disabled:opacity-50 shadow-md"
+                :disabled="!selectedPivot">
+            </button>
+
+
+            <div 
+                x-data="{
+                    sectionData: [],
+                    async getPivotSpeedSections() {
+                        if (!selectedPivot?.id) return;
+                        try {
+                            let res = await fetch(`${API_URL}/api/get_pivot_sections?pivot_id=${selectedPivot.id}`);
+                            if (res.ok) {
+                                let data = await res.json();
+                                if (data) this.sectionData = data;
+                            }
+                        } catch(err) {
+                            console.error('Status fetch error:', err);
+                        }
+                    },
+                    async onAddSection(args) {
+                        try {
+                            let res = await fetch(`${API_URL}/api/register_pivot_section`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    pivot_id: selectedPivot.id,
+                                    serial: args.serial,
+                                    value: args.value,
+                                    label: args.label,
+                                    angle: args.angle_deg
+                                })
+                            });
+
+                            if (res.ok) {
+                                let data = await res.json();
+                                this.sectionData = data;
+                            }
+                        } catch (err) {
+                            console.error('Add section error:', err);
+                        }
+                    },
+                    async onDeleteSection(args) {
+                        try {
+                            let res = await fetch(`${API_URL}/api/delete_pivot_section`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    pivot_id: selectedPivot.id,
+                                    serial: args.serial
+                                })
+                            });
+
+                            if (res.ok) {
+                                let data = await res.json();
+                                this.sectionData = data;
+                            }
+                        } catch (err) {
+                            console.error('Delete section error:', err);
+                        }
+                    },
+                    async onEditSection(args) {
+                        let section = args.section;
+                        try {
+                            let res = await fetch(`${API_URL}/api/update_pivot_section`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    pivot_id: selectedPivot.id,
+                                    serial: section.serial,
+                                    angle_deg: section.angle_deg,
+                                    label: section.label,
+                                    value: section.value,
+                                    unit: section.unit
+                                })
+                            })
+
+                            if (!res.ok) {
+                                const text = await res.text()
+                                throw new Error(text)
+                            } else {
+                                args.onSuccess?.()
+                            }
+
+                            const updatedSections = await res.json()
+                            this.sectionData = updatedSections
+
+                        } catch (err) {
+                            console.error('Failed to update section:', err)
+                        }
+                    }
+                }"
+                x-effect="getPivotSpeedSections()"
+                @on-delete.window="onDeleteSection($event.detail)"
+                @on-add.window="onAddSection($event.detail)"
+                @on-edit.window="onEditSection($event.detail)"
+                class="w-full h-[30%] flex items-center justify-center">
+                <pie-chart></pie-chart>
+            </div>
+            
+            <!-- Status cards -->
+            <div 
+                x-show="selectedPivot?.status"
+                x-data="{ 
+                    sseSource: null,
+                    formatLabel(key) {
+                        return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    },
+                    connectSSE() {
+                        if (this.sseSource) {
+                            this.sseSource.close();
+                            this.sseSource = null;
+                        }
+
+                        if (!selectedPivot?.id) return;
+
+                        this.sseSource = new EventSource(`${API_URL}/api/pivot_status?pivot_id=${selectedPivot.id}`);
+
+                        this.sseSource.onmessage = (event) => {
+                            try {
+                                const newData = JSON.parse(event.data);
+                                selectedPivot.status = newData;
+                            } catch (err) {
+                                console.error('SSE Parse Error:', err);
+                            }
+                        };
+
+                        this.sseSource.onerror = (err) => {
+                            console.error('SSE Connection Error. Attempting to reconnect...', err);
+                        };
+                    },
+                    async toggleControl(key, newValue) {
+                        if (!this.selectedPivot?.status) return;
+
+                        const oldValue = this.selectedPivot.status[key];
+                        this.selectedPivot.status[key] = newValue;
+
+                        try {
+                            const res = await fetch(`${API_URL}/api/update_pivot_control`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    pivot_id: this.selectedPivot.id,
+                                    [key]: newValue
+                                })
+                            });
+
+                            if (!res.ok) throw new Error('Server error');
+                            
+                        } catch (err) {
+                            this.selectedPivot.status[key] = oldValue;
+                        }
+                    }
+                }" 
+                x-effect="connectSSE()"
+                class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-5">
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-bold text-gray-500 uppercase">Control</label>
+                    <div class="flex bg-gray-200 rounded p-1 shadow-inner h-10">
+                        <button 
+                            @click="toggleControl('wet', true)"
+                            class="flex-1 rounded text-sm font-bold transition-all"
+                            :class="selectedPivot?.status?.wet ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                        >Wet</button>
+                        <button 
+                            @click="toggleControl('wet', false)"
+                            class="flex-1 rounded text-sm font-bold transition-all"
+                            :class="!selectedPivot?.status?.wet ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                        >Dry</button>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-bold text-gray-500 uppercase">Direction</label>
+                    <div class="flex bg-gray-200 rounded p-1 shadow-inner h-10">
+                        <button 
+                            @click="toggleControl('direction', 'forward')"
+                            class="flex-1 rounded text-sm font-bold transition-all"
+                            :class="selectedPivot?.status?.direction == 'forward' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                        >Forward</button>
+                        <button 
+                            @click="toggleControl('direction', 'reverse')"
+                            class="flex-1 rounded text-sm font-bold transition-all"
+                            :class="selectedPivot?.status?.direction == 'reverse' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                        >Reverse</button>
+                    </div>
+                </div>
+
+                <template x-for="(value, key) in selectedPivot?.status" :key="key">
+                    <template x-if="!['pivot_id', 'id', 'wet', 'direction'].includes(key)">
+                        <div x-data="{ heading: '', body: '' }" 
+                            x-effect="heading = formatLabel(key); body = value">
+                            <status-card></status-card>
+                        </div>
+                    </template>
+                </template>
+            </div>
+        
+        </div>  
+
+        <div x-data="{
+            get bShow() { return bShowRegisterPivotModal }, 
+            set bShow(val) { bShowRegisterPivotModal = val }
+        }"
+        @success="
+            bShow = false;
+            fetchPivots();
+        ">
+            <register-pivot-modal/>
+        </div>
+
     </div>
 
+    <div class="w-full flex justify-center py-2">
+        <button 
+            class="button bg-blue-500 text-sm rounded-md px-2 py-1.5 shadow-xs text-gray-50 font-bold cursor-pointer"
+            @click="() => {
+                localStorage.removeItem('last_user_id');
+                localStorage.removeItem('last_pivot_id');
+                loadPage('login')
+            }"
+        >
+        Logout
+        </button>
+    </div>
 </div>
-
-<div class="w-full flex justify-center py-2">
-    <button 
-        class="button bg-blue-500 text-sm rounded-md px-2 py-1.5 shadow-xs text-gray-50 font-bold cursor-pointer"
-        @click="() => {
-            localStorage.removeItem('last_user_id');
-            localStorage.removeItem('last_pivot_id');
-            loadPage('login')
-        }"
-    >
-    Logout
-    </button>
-</div>
-
 
 
 

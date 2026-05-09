@@ -116,5 +116,26 @@ AFTER INSERT ON pivots
 FOR EACH ROW
 EXECUTE FUNCTION create_pivot_status();
 
+CREATE OR REPLACE FUNCTION ack_older_commands()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE pivot_command_queue
+    SET 
+        acknowledged = TRUE,
+        acknowledged_at = NOW()
+    WHERE pivot_id = NEW.pivot_id 
+      AND command = NEW.command 
+      AND acknowledged = FALSE
+      AND id != NEW.id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_ack_older_commands
+AFTER INSERT ON pivot_command_queue
+FOR EACH ROW
+EXECUTE FUNCTION ack_older_commands();
+
 CREATE INDEX idx_pivot_command_queue_pivot_id ON pivot_command_queue(pivot_id);
 CREATE INDEX idx_pivot_command_queue_executed ON pivot_command_queue(acknowledged);

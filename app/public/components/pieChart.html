@@ -241,7 +241,7 @@
                   </div>`
                   : ''}
                 <div style='background-color: ${colour}' class='px-2 text-white rounded-md text-[10px] flex items-center justify-center shadow'>
-                 ${s.value}${s.unit === 'pct' ? '%' : s.unit}
+                 ${s.value} ${s.unit === 'pct' ? '%' : s.unit}
                 </div>
               </div>
             </foreignObject>
@@ -253,6 +253,55 @@
       "
       @on-select.window="activeIndex == $event.detail ? activeIndex = null : activeIndex = $event.detail"
       @set-dragging-index.window="draggingIndex = $event.detail">
+    </g>
+
+    <g 
+      x-data="{
+        get markers() {
+            return [0, 45, 90, 135, 180, 225, 270, 315].map(deg => {
+                const rad = degToRad(deg);
+                const start = getArcPos(rad, r * 0.95);
+                const end = getArcPos(rad, r * 1.03);
+                return { x1: start.x, y1: start.y, x2: end.x, y2: end.y, label: deg };
+            });
+        }
+      }"
+      x-show="draggingIndex !== null" 
+      x-cloak 
+      x-transition:enter="transition ease-out duration-200" 
+      x-transition:enter-start="opacity-0" 
+      x-transition:enter-end="opacity-100"
+      x-html="(() => {
+        const angle = sectionData[draggingIndex].angle_deg;
+        const labelRadius = r * 1.08;
+        const pos = getArcPos(degToRad(angle), labelRadius);
+        const floatingLabel =  `
+            <g>
+                <text x='${pos.x}' y='${pos.y}' fill='#44403c' font-size='12' font-weight='bold' text-anchor='middle'>
+                    ${angle}°
+                </text>
+            </g>
+        `
+
+       const staticAngles = markers.map(m => {
+          const diff = Math.abs(m.label - angle);
+          const isTooClose = diff < 5 || diff > 355;
+
+          return isTooClose ? '' : `
+            <g>
+                <line x1='${m.x1}' y1='${m.y1}' x2='${m.x2}' y2='${m.y2}' 
+                      stroke='#44403c' stroke-width='1' stroke-dasharray='2,2' />
+                  <text x='${getArcPos(degToRad(m.label), labelRadius).x}' 
+                        y='${getArcPos(degToRad(m.label), labelRadius).y}' 
+                        fill='#44403c' font-size='12' text-anchor='middle' 
+                        alignment-baseline='middle'>${m.label}°</text>
+            </g>
+          `;
+      }).join('');
+        
+        return staticAngles + floatingLabel
+      })"
+    >
     </g>
 
   </svg>

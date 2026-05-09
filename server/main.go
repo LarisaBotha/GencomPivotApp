@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-var Commands = []string{"Start", "Stop", "Update"}
+var Commands = []string{"Start", "Stop", "Update", "Set_Control"}
 var Direction = []string{"forward", "reverse"}
 var Status = []string{"stopped", "running", "offline", "error"}
 
@@ -36,6 +36,7 @@ func main() {
 	http.HandleFunc("/api/delete_pivot_section", handleDeletePivotSection)
 	http.HandleFunc("/api/update_pivot_section", handleUpdatePivotSection)
 	http.HandleFunc("/api/update_pivot_control", handleUpdatePivotControl)
+	http.HandleFunc("/api/ack_commands", handleAckCommands)
 	http.HandleFunc("/api/sync_pivot", handleSyncPivot)
 	http.HandleFunc("/api/get_subscriber_count", handleGetSubscriberCount)
 	http.HandleFunc("/api/command", handleCommand)

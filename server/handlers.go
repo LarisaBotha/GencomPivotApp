@@ -177,14 +177,14 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	// Return
-	type pivot struct {
+	type dbPivot struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
-	var pivots []pivot
+	var pivots []dbPivot
 
 	for rows.Next() {
-		var p pivot
+		var p dbPivot
 		if err := rows.Scan(&p.ID, &p.Name); err != nil {
 			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Internal server error: %v", err))
 			return
@@ -196,6 +196,11 @@ func handleGetUserPivots(w http.ResponseWriter, r *http.Request) {
 }
 
 func queuePivotCommand(ctx context.Context, pivotID string, cmd string, payload *string) error {
+
+	if !slices.Contains(Commands, cmd) {
+		return fmt.Errorf("unknown command: %s", cmd)
+	}
+
 	_, err := DB.Exec(ctx, `
         INSERT INTO pivot_command_queue (pivot_id, command, payload) 
         VALUES ($1, $2, $3);`,
@@ -238,17 +243,12 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
 		return
 	}
-	// if _, err := DB.Exec(r.Context(), `INSERT INTO pivot_command_queue (pivot_id, command, payload) VALUES ($1, $2, $3);`,
-	// 	body.PivotId, body.Command, body.Payload); err != nil {
-	// 	writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
-	// 	return
-	// }
 
 	// Success
 	writeHeader(w, http.StatusOK)
 }
 
-type PivotStatus struct {
+type dbPivotStatus struct {
 	PositionDeg float64 `json:"position_deg" db:"position_deg"`
 	SpeedPct    float64 `json:"speed_pct" db:"speed_pct"`
 	Direction   string  `json:"direction" db:"direction"`
@@ -258,10 +258,10 @@ type PivotStatus struct {
 	Pressure    float64 `json:"pressure" db:"pressure"`
 }
 
-func getPivotStatus(ctx context.Context, pivotID string) (*PivotStatus, error) {
+func getPivotStatus(ctx context.Context, pivotID string) (*dbPivotStatus, error) {
 
 	// Fetch Status
-	var pivotStatus PivotStatus
+	var pivotStatus dbPivotStatus
 	err := DB.QueryRow(ctx,
 		`SELECT 
 			position_deg, 
@@ -377,7 +377,7 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type PivotSection struct {
+type dbPivotSection struct {
 	Serial int     `json:"serial"`
 	Value  float64 `json:"value"`
 	Label  *string `json:"label"`
@@ -385,8 +385,8 @@ type PivotSection struct {
 	Unit   string  `json:"unit"`
 }
 
-func getPivotSections(context context.Context, pivotId string) ([]PivotSection, error) {
-	sections := []PivotSection{}
+func getPivotSections(context context.Context, pivotId string) ([]dbPivotSection, error) {
+	sections := []dbPivotSection{}
 
 	rows, err := DB.Query(context,
 		`SELECT serial, value, label, angle_deg, unit
@@ -399,7 +399,7 @@ func getPivotSections(context context.Context, pivotId string) ([]PivotSection, 
 	defer rows.Close()
 
 	for rows.Next() {
-		var s PivotSection
+		var s dbPivotSection
 		if err := rows.Scan(&s.Serial, &s.Value, &s.Label, &s.Angle, &s.Unit); err != nil {
 			return sections, fmt.Errorf("Scan error")
 		}
@@ -629,7 +629,7 @@ func handleUpdatePivotSection(w http.ResponseWriter, r *http.Request) {
 	payloadStr := string(payloadBytes)
 
 	// Register Update Command
-	if err := queuePivotCommand(r.Context(), args.PivotId, "UPDATE", &payloadStr); err != nil {
+	if err := queuePivotCommand(r.Context(), args.PivotId, "Update", &payloadStr); err != nil {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
 		return
 	}
@@ -646,7 +646,7 @@ func getPivotIDByIMEI(ctx context.Context, imei string) (string, error) {
 	return id, nil
 }
 
-type Command struct {
+type dbCommand struct {
 	ID      int     `json:"id"`
 	Command string  `json:"command"`
 	Payload *string `json:"payload"`
@@ -731,50 +731,37 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch unacknowledged commands
 	rows, err := tx.Query(ctx, `
-		SELECT id, command, payload
-		FROM pivot_command_queue
-		WHERE pivot_id = $1 AND acknowledged = FALSE
-		ORDER BY created_at ASC
+			WITH latest_commands AS (
+			SELECT DISTINCT ON (command) id
+			FROM pivot_command_queue
+			WHERE pivot_id = $1 AND acknowledged = FALSE
+			ORDER BY command, created_at DESC
+		)
+		SELECT q.id q.command, q.payload
+		FROM pivot_command_queue q
+		JOIN latest_commands lc ON q.id = lc.id
 		FOR UPDATE
 	`, pivotID)
 	if err != nil {
-		writeText(w, http.StatusInternalServerError, "Failed to fetch commands")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch commands: %v", err))
 		return
 	}
 	defer rows.Close()
 
-	var commands []Command
-	var ids []int
+	var commands []dbCommand
 
 	for rows.Next() {
-		var c Command
+		var c dbCommand
 		if err := rows.Scan(&c.ID, &c.Command, &c.Payload); err != nil {
-			writeText(w, http.StatusInternalServerError, "Scan error")
+			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Scan error: %v", err))
 			return
 		}
 		commands = append(commands, c)
-		ids = append(ids, c.ID)
-	}
-
-	// Acknowledge commands
-	if len(ids) > 0 {
-		_, err = tx.Exec(ctx, `
-			UPDATE pivot_command_queue
-			SET 
-				acknowledged = TRUE,
-				acknowledged_at = NOW()
-			WHERE id = ANY($1)
-		`, ids)
-
-		if err != nil {
-			writeText(w, http.StatusInternalServerError, "Failed to acknowledge commands")
-			return
-		}
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		writeText(w, http.StatusInternalServerError, "Failed to commit transaction")
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to commit transaction: %v", err))
 		return
 	}
 
@@ -851,22 +838,77 @@ func handleUpdatePivotControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if body.Direction != nil && !slices.Contains(Direction, *body.Direction) {
+		writeText(w, http.StatusBadRequest, "Invalid direction")
+	}
+
 	// Update
-	_, err := DB.Exec(r.Context(), `
+	var finalDirection string
+	var finalWet bool
+	err := DB.QueryRow(r.Context(), `
 		UPDATE pivot_status 
 		SET 
 			direction = COALESCE($1, direction),
 			wet = COALESCE($2, wet),
 			updated_at = NOW()
-		WHERE pivot_id = $3`,
+		WHERE pivot_id = $3
+		RETURNING direction, wet`,
 		NormalizeString(body.Direction),
 		body.Wet,
 		body.PivotId,
-	)
+	).Scan(&finalDirection, &finalWet)
 
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update status: %v", err))
 		return
+	}
+
+	// Register Set Control Command
+	payload := map[string]any{
+		"direction": finalDirection,
+		"wet":       finalWet,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	payloadStr := string(payloadBytes)
+	if err := queuePivotCommand(r.Context(), body.PivotId, "Set_Control", &payloadStr); err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
+		return
+	}
+
+	writeHeader(w, http.StatusOK)
+}
+
+func handleAckCommands(w http.ResponseWriter, r *http.Request) {
+
+	// Restrict to POST
+	if r.Method != http.MethodPost && r.Method != http.MethodOptions {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Get arguments
+	var body struct {
+		IDs []int `json:"ids"`
+	}
+	if err := GetArguments(r, &body); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid arguments")
+		return
+	}
+
+	// Acknowledge commands
+	if len(body.IDs) > 0 {
+		_, err := DB.Exec(r.Context(), `
+			UPDATE pivot_command_queue
+			SET
+				acknowledged = TRUE,
+				acknowledged_at = NOW()
+			WHERE id = ANY($1)
+		`, body.IDs)
+
+		if err != nil {
+			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to acknowledge commands: %v", err))
+			return
+		}
 	}
 
 	writeHeader(w, http.StatusOK)

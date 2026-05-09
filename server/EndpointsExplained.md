@@ -51,7 +51,7 @@ PONG - 2026-03-30T15:00:00Z
 - wet (Bool) (Optional)
 - pressure (Float) - Current water pressure (Optional)
 
-**Response:** A JSON array of newly acknowledged command objects.
+**Response:** A JSON array of pending commands. Only the most recent version of each command type is returned to avoid redundancy. These commands will repeat in every sync until the pivot confirms receipt via /api/ack_commands.
 
 **Example:** 
 
@@ -118,4 +118,38 @@ Connection: close
 {
   "count": 3
 }
+```
+
+# Acknowledge / Confirm Commands
+
+**Access URL:** https://pivot-api-of3d.onrender.com/api/ack_commands
+
+**Purpose / Use:** Marks specific commands as acknowledged by the pivot device. This prevents the same commands from being sent repeatedly in api/sync_pivot responses.
+
+**Request Type / Method:** POST
+
+**Arguments / Body:**
+
+- ids (Array of Integers) - A list of unique command IDs to acknowledge (Required)
+
+**Response:** Returns a 200 OK status code upon successful update.
+
+**Example:**
+
+Request:
+```
+POST /api/ack_commands HTTP/1.1
+Host: pivot-api-of3d.onrender.com
+Content-Type: application/json
+
+{
+  "ids": [1, 2, 5]
+}
+```
+
+Response:
+```
+HTTP/1.1 200 OK
+Content-Length: 0
+Connection: close
 ```
