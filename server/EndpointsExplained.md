@@ -79,9 +79,19 @@ Connection: close
 
 [
   {
-    "id": 1,
-    "command": "UPDATE",
-    "payload": "[{\"start\":0,\"end\":90,\"value\":10.5,\"unit\":\"mm\"},{\"start\":90,\"end\":0,\"value\":5.0,\"unit\":\"mm\"}]"
+    "id": 101,
+    "command": "Update",
+    "payload": "[{\"start\":0,\"end\":180,\"value\":10.0,\"unit\":\"mm\"},{\"start\":180,\"end\":0,\"value\":5.0,\"unit\":\"mm\"}]"
+  },
+  {
+    "id": 102,
+    "command": "Set_Control",
+    "payload": "{\"direction\":\"reverse\",\"wet\":true}"
+  },
+  {
+    "id": 103,
+    "command": "Stop",
+    "payload": null
   }
 ]
 ```
