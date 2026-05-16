@@ -737,7 +737,7 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 			WHERE pivot_id = $1 AND acknowledged = FALSE
 			ORDER BY command, created_at DESC
 		)
-		SELECT q.id q.command, q.payload
+		SELECT q.id, q.command, q.payload
 		FROM pivot_command_queue q
 		JOIN latest_commands lc ON q.id = lc.id
 		FOR UPDATE

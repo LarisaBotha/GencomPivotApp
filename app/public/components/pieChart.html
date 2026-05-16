@@ -272,7 +272,8 @@
       x-transition:enter-start="opacity-0" 
       x-transition:enter-end="opacity-100"
       x-html="(() => {
-        const angle = sectionData[draggingIndex].angle_deg;
+        if (!draggingIndex) return;
+        const angle = sectionData[draggingIndex] ? sectionData[draggingIndex].angle_deg : 0;
         const labelRadius = r * 1.08;
         const pos = getArcPos(degToRad(angle), labelRadius);
         const floatingLabel =  `
