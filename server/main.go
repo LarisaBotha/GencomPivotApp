@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-var Commands = []string{"Start", "Stop", "Update", "Set_Control"}
+var Commands = []string{"Start", "Stop", "Update"}
 var Direction = []string{"forward", "reverse"}
 var Status = []string{"stopped", "running", "offline", "error"}
 
@@ -39,7 +39,8 @@ func main() {
 	http.HandleFunc("/api/ack_commands", handleAckCommands)
 	http.HandleFunc("/api/sync_pivot", handleSyncPivot)
 	http.HandleFunc("/api/get_subscriber_count", handleGetSubscriberCount)
-	http.HandleFunc("/api/command", handleCommand)
+	http.HandleFunc("/api/start", handleStart)
+	http.HandleFunc("/api/stop", handleStop)
 
 	fmt.Println("🚀 Server started on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

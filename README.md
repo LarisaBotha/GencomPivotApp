@@ -25,12 +25,12 @@
 - loading 
 - merge pivot and pivot_status tables
 - android app signing for release
-- modernise ui
 - Handle failures
 - PieChart must not always draggable, use another edit field?
 - dragging on mobile not working as smoothly as I want it
 - interpret error and offline pivot status
-- button click animation
-- switch between timer % and application mm
-- push notifications
 - make toggle component
+
+- button click animation
+- push notifications
+- modernise ui

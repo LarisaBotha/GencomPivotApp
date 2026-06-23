@@ -50,6 +50,11 @@ PONG - 2026-03-30T15:00:00Z
 - battery_pct (Float) - Battery level (Optional)
 - wet (Bool) (Optional)
 - pressure (Float) - Current water pressure (Optional)
+- sections (Array) — Array of pivot sections (Optional)
+  - start (Float) — Segment start degree (Required)
+  - end (Float) — Segment end degree (Required)
+  - value (Float) — (Required)
+  - unit (String) — 'mm' OR 'pct' (Required)
 
 **Response:** A JSON array of pending commands. Only the most recent version of each command type is returned to avoid redundancy. These commands will repeat in every sync until the pivot confirms receipt via /api/ack_commands.
 
@@ -65,8 +70,22 @@ Content-Type: application/json
   "imei": "864201040000001",
   "position_deg": 180.5,
   "speed_pct": 50.65,
-  "status": "Running",
-  "wet": true
+  "status": "running",
+  "wet": true,
+  "sections": [
+    {
+      "start": 0.0,
+      "end": 180.0,
+      "value": 10.0,
+      "unit": "mm"
+    },
+    {
+      "start": 180.0,
+      "end": 0.0,
+      "value": 5.0,
+      "unit": "mm"
+    }
+  ]
 }
 ```
 
@@ -74,26 +93,23 @@ Response:
 ```
 HTTP/1.1 200 OK
 Content-Type: application/json
-Content-Length: 124
 Connection: close
 
-[
-  {
-    "id": 101,
-    "command": "Update",
-    "payload": "[{\"start\":0,\"end\":180,\"value\":10.0,\"unit\":\"mm\"},{\"start\":180,\"end\":0,\"value\":5.0,\"unit\":\"mm\"}]"
-  },
-  {
+{
+  "connections": 3,
+  "start": {
     "id": 102,
-    "command": "Set_Control",
-    "payload": "{\"direction\":\"reverse\",\"wet\":true}"
+    "direction": "reverse",
+    "wet": true
   },
-  {
-    "id": 103,
-    "command": "Stop",
-    "payload": null
+  "update": {
+    "id": 101,
+    "sections": [
+      { "start": 0, "end": 180, "value": 12.5, "unit": "mm" },
+      { "start": 180, "end": 0, "value": 8.0, "unit": "mm" }
+    ]
   }
-]
+}
 ```
 
 # Get Online Users

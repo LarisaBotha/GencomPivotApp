@@ -208,46 +208,6 @@ func queuePivotCommand(ctx context.Context, pivotID string, cmd string, payload 
 	return err
 }
 
-func handleCommand(w http.ResponseWriter, r *http.Request) {
-
-	// Handle Preflight
-	if r.Method == http.MethodOptions {
-		writeHeader(w, http.StatusOK)
-		return
-	}
-
-	// Restrict to Post
-	if r.Method != http.MethodPost {
-		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	// Decode Body
-	var body struct {
-		PivotId string  `json:"pivot_id"`
-		Command string  `json:"command"`
-		Payload *string `json:"payload"`
-	}
-	if err := GetArguments(r, &body); err != nil {
-		writeText(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	// Validation
-	if !slices.Contains(Commands, body.Command) {
-		writeText(w, http.StatusBadRequest, "Invalid command")
-	}
-
-	// Insert (created_at is automatically populated)
-	if err := queuePivotCommand(r.Context(), body.PivotId, body.Command, body.Payload); err != nil {
-		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
-		return
-	}
-
-	// Success
-	writeHeader(w, http.StatusOK)
-}
-
 type dbPivotStatus struct {
 	PositionDeg float64 `json:"position_deg" db:"position_deg"`
 	SpeedPct    float64 `json:"speed_pct" db:"speed_pct"`
@@ -530,6 +490,13 @@ func handleDeletePivotSection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sections)
 }
 
+type SectionsSimplified struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+}
+
 func handleUpdatePivotSection(w http.ResponseWriter, r *http.Request) {
 
 	// Handle Preflight
@@ -591,13 +558,6 @@ func handleUpdatePivotSection(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-
-	type SectionsSimplified struct {
-		Start float64 `json:"start"`
-		End   float64 `json:"end"`
-		Value float64 `json:"value"`
-		Unit  string  `json:"unit"`
 	}
 
 	var simplifiedSections []SectionsSimplified
@@ -668,13 +628,14 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	// Decode body
 	var body struct {
-		IMEI       string   `json:"imei"`
-		Position   *float64 `json:"position_deg"` // optional
-		Speed      *float64 `json:"speed_pct"`    // optional
-		Direction  *string  `json:"direction"`    // optional
-		Wet        *bool    `json:"wet"`          // optional
-		Status     *string  `json:"status"`       // optional
-		BatteryPct *float64 `json:"battery_pct"`  // optional
+		IMEI       string                `json:"imei"`
+		Position   *float64              `json:"position_deg"` // optional
+		Speed      *float64              `json:"speed_pct"`    // optional
+		Direction  *string               `json:"direction"`    // optional
+		Wet        *bool                 `json:"wet"`          // optional
+		Status     *string               `json:"status"`       // optional
+		BatteryPct *float64              `json:"battery_pct"`  // optional
+		Sections   *[]SectionsSimplified `json:"sections"`     // optional
 	}
 	if err := GetArguments(r, &body); err != nil {
 		log.Println("err ", err)
@@ -729,6 +690,37 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure Sections still align
+	if body.Sections != nil {
+		sections := *body.Sections
+
+		// Sort the sections by their starting angle (0° -> 360°)
+		slices.SortFunc(sections, func(a, b SectionsSimplified) int {
+			if a.Start < b.Start {
+				return -1
+			}
+			if a.Start > b.Start {
+				return 1
+			}
+			return 0
+		})
+
+		for _, s := range sections {
+			_, err = tx.Exec(ctx, `
+			UPDATE pivot_sections
+			SET 
+				value = $1,
+				unit  = $2
+			WHERE pivot_id = $3 AND angle_deg = $4
+		`, s.Value, s.Unit, pivotID, s.Start)
+
+			if err != nil {
+				writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to sync section at angle %v: %v", s.Start, err))
+				return
+			}
+		}
+	}
+
 	// Fetch unacknowledged commands
 	rows, err := tx.Query(ctx, `
 			WITH latest_commands AS (
@@ -748,15 +740,71 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var commands []dbCommand
+	/////////////////////////////////////////////////////////////////////////////////////////
+	// var commands []dbCommand
+
+	// for rows.Next() {
+	// 	var c dbCommand
+	// 	if err := rows.Scan(&c.ID, &c.Command, &c.Payload); err != nil {
+	// 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Scan error: %v", err))
+	// 		return
+	// 	}
+	// 	commands = append(commands, c)
+	// }
+
+	////////////////////////////////////////////////////////////////////////////////////////////
+
+	response := make(map[string]any)
+
+	subscribersMu.Lock()
+	if list, ok := subscribers[pivotID]; ok {
+		response["connections"] = len(list)
+	} else {
+		response["connections"] = 0
+	}
+	subscribersMu.Unlock()
 
 	for rows.Next() {
-		var c dbCommand
-		if err := rows.Scan(&c.ID, &c.Command, &c.Payload); err != nil {
+		var id int
+		var command string
+		var payload *string
+
+		if err := rows.Scan(&id, &command, &payload); err != nil {
 			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Scan error: %v", err))
 			return
 		}
-		commands = append(commands, c)
+
+		jsonKey := *NormalizeString(&command)
+		cmdBlock := map[string]any{
+			"id": id,
+		}
+
+		// Unmarshal payload directly into the map if it exists
+		if payload != nil && *payload != "" {
+			var unmarshaledPayload any
+
+			// Detect if the inner payload string is a JSON array or object
+			if (*payload)[0] == '[' {
+				var slicePayload []any
+				if err := json.Unmarshal([]byte(*payload), &slicePayload); err == nil {
+					unmarshaledPayload = slicePayload
+				}
+			} else {
+				var mapPayload map[string]any
+				if err := json.Unmarshal([]byte(*payload), &mapPayload); err == nil {
+					unmarshaledPayload = mapPayload
+				}
+			}
+
+			if mapData, ok := unmarshaledPayload.(map[string]any); ok {
+				for k, v := range mapData {
+					cmdBlock[k] = v
+				}
+			} else if sliceData, ok := unmarshaledPayload.([]any); ok {
+				cmdBlock["sections"] = sliceData
+			}
+		}
+		response[jsonKey] = cmdBlock
 	}
 
 	// Commit transaction
@@ -767,7 +815,7 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	go notifyStatusUpdate(context.Background(), pivotID)
 
-	writeJSON(w, http.StatusOK, commands)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func handleGetSubscriberCount(w http.ResponseWriter, r *http.Request) {
@@ -863,18 +911,6 @@ func handleUpdatePivotControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register Set Control Command
-	payload := map[string]any{
-		"direction": finalDirection,
-		"wet":       finalWet,
-	}
-	payloadBytes, _ := json.Marshal(payload)
-	payloadStr := string(payloadBytes)
-	if err := queuePivotCommand(r.Context(), body.PivotId, "Set_Control", &payloadStr); err != nil {
-		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue command: %v", err))
-		return
-	}
-
 	writeHeader(w, http.StatusOK)
 }
 
@@ -909,6 +945,107 @@ func handleAckCommands(w http.ResponseWriter, r *http.Request) {
 			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to acknowledge commands: %v", err))
 			return
 		}
+	}
+
+	writeHeader(w, http.StatusOK)
+}
+
+func handleStart(w http.ResponseWriter, r *http.Request) {
+
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Decode Body
+	var body struct {
+		PivotId string `json:"pivot_id"`
+	}
+	if err := GetArguments(r, &body); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if body.PivotId == "" {
+		writeText(w, http.StatusBadRequest, "pivot_id is required")
+		return
+	}
+
+	ctx := r.Context()
+
+	// Fetch current pivot controls (wet and direction status)
+	var direction string
+	var wet bool
+	err := DB.QueryRow(ctx, `
+		SELECT direction::text, wet 
+		FROM pivot_status 
+		WHERE pivot_id = $1
+	`, body.PivotId).Scan(&direction, &wet)
+
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch pivot control settings: %v", err))
+		return
+	}
+
+	// Queue command
+	payload := map[string]any{
+		"direction": direction,
+		"wet":       wet,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		writeText(w, http.StatusInternalServerError, "Failed to serialize payload")
+		return
+	}
+	payloadStr := string(payloadBytes)
+	if err := queuePivotCommand(ctx, body.PivotId, "Start", &payloadStr); err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue start command: %v", err))
+		return
+	}
+
+	writeHeader(w, http.StatusOK)
+}
+
+func handleStop(w http.ResponseWriter, r *http.Request) {
+
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
+	// Restrict to POST
+	if r.Method != http.MethodPost {
+		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Decode Body
+	var body struct {
+		PivotId string `json:"pivot_id"`
+	}
+	if err := GetArguments(r, &body); err != nil {
+		writeText(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validation
+	if body.PivotId == "" {
+		writeText(w, http.StatusBadRequest, "pivot_id is required")
+		return
+	}
+
+	// Queue command
+	if err := queuePivotCommand(r.Context(), body.PivotId, "Stop", nil); err != nil {
+		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue stop command: %v", err))
+		return
 	}
 
 	writeHeader(w, http.StatusOK)

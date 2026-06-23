@@ -3,7 +3,7 @@
 1) Create a new postgres service in render
 2) Connect it to the visual studio postgres extension
     a) Add new connection, give it a name
-    b) Fill in the follwoing fields: database, username, password and the hostname 
+    b) Fill in the following fields: database, username, password and the hostname 
     which is the part between @ and / within the external connection string (eg. hostname.oregon-postgres.render.com)
     c) Toggle use SSL
     d) Click connect
