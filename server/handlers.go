@@ -606,10 +606,51 @@ func getPivotIDByIMEI(ctx context.Context, imei string) (string, error) {
 	return id, nil
 }
 
-type dbCommand struct {
-	ID      int     `json:"id"`
-	Command string  `json:"command"`
-	Payload *string `json:"payload"`
+type OrderedSection struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+}
+
+func (os OrderedSection) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(
+		`{"start":%g,"end":%g,"value":%g,"unit":%q}`,
+		os.Start, os.End, os.Value, os.Unit,
+	)), nil
+}
+
+type CommandBlock struct {
+	ID      int
+	Payload *string
+}
+
+// MarshalJSON guarantees "id" is first, and fields inside sections arrays are ordered uniformly
+func (cb CommandBlock) MarshalJSON() ([]byte, error) {
+	idPart := fmt.Sprintf(`{"id":%d`, cb.ID)
+
+	// If there's no payload, cleanly close the object
+	if cb.Payload == nil || *cb.Payload == "" {
+		return []byte(idPart + "}"), nil
+	}
+
+	p := *cb.Payload
+
+	// If the payload is a JSON array (like sections), deserialize and enforce strict order
+	if p[0] == '[' {
+		var rawSections []OrderedSection
+		if err := json.Unmarshal([]byte(p), &rawSections); err == nil {
+			orderedBytes, _ := json.Marshal(rawSections)
+			return []byte(fmt.Sprintf(`%s,"sections":%s}`, idPart, string(orderedBytes))), nil
+		}
+	}
+
+	// If the payload is a standard JSON object, strip its opening '{' and merge it right next to id
+	if p[0] == '{' {
+		return []byte(idPart + "," + p[1:]), nil
+	}
+
+	return []byte(idPart + "}"), nil
 }
 
 func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
@@ -666,17 +707,17 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	// Update pivot status
 	_, err = tx.Exec(ctx, `
-		UPDATE pivot_status
-		SET 
-			position_deg = COALESCE($1, position_deg),
-			speed_pct    = COALESCE($2, speed_pct),
-			direction    = COALESCE($3, direction),
-			wet          = COALESCE($4, wet),
-			status       = COALESCE($5, status),
-			battery_pct  = COALESCE($6, battery_pct),
-			updated_at   = NOW()
-		WHERE pivot_id = $7
-	`,
+        UPDATE pivot_status
+        SET 
+            position_deg = COALESCE($1, position_deg),
+            speed_pct    = COALESCE($2, speed_pct),
+            direction    = COALESCE($3, direction),
+            wet          = COALESCE($4, wet),
+            status       = COALESCE($5, status),
+            battery_pct  = COALESCE($6, battery_pct),
+            updated_at   = NOW()
+        WHERE pivot_id = $7
+    `,
 		body.Position,
 		body.Speed,
 		NormalizeString(body.Direction),
@@ -707,12 +748,12 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 		for _, s := range sections {
 			_, err = tx.Exec(ctx, `
-			UPDATE pivot_sections
-			SET 
-				value = $1,
-				unit  = $2
-			WHERE pivot_id = $3 AND angle_deg = $4
-		`, s.Value, s.Unit, pivotID, s.Start)
+            UPDATE pivot_sections
+            SET 
+                value = $1,
+                unit  = $2
+            WHERE pivot_id = $3 AND angle_deg = $4
+        `, s.Value, s.Unit, pivotID, s.Start)
 
 			if err != nil {
 				writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to sync section at angle %v: %v", s.Start, err))
@@ -723,36 +764,22 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch unacknowledged commands
 	rows, err := tx.Query(ctx, `
-			WITH latest_commands AS (
-			SELECT DISTINCT ON (command) id
-			FROM pivot_command_queue
-			WHERE pivot_id = $1 AND acknowledged = FALSE
-			ORDER BY command, created_at DESC
-		)
-		SELECT q.id, q.command, q.payload
-		FROM pivot_command_queue q
-		JOIN latest_commands lc ON q.id = lc.id
-		FOR UPDATE
-	`, pivotID)
+            WITH latest_commands AS (
+            SELECT DISTINCT ON (command) id
+            FROM pivot_command_queue
+            WHERE pivot_id = $1 AND acknowledged = FALSE
+            ORDER BY command, created_at DESC
+        )
+        SELECT q.id, q.command, q.payload
+        FROM pivot_command_queue q
+        JOIN latest_commands lc ON q.id = lc.id
+        FOR UPDATE
+    `, pivotID)
 	if err != nil {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch commands: %v", err))
 		return
 	}
 	defer rows.Close()
-
-	/////////////////////////////////////////////////////////////////////////////////////////
-	// var commands []dbCommand
-
-	// for rows.Next() {
-	// 	var c dbCommand
-	// 	if err := rows.Scan(&c.ID, &c.Command, &c.Payload); err != nil {
-	// 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Scan error: %v", err))
-	// 		return
-	// 	}
-	// 	commands = append(commands, c)
-	// }
-
-	////////////////////////////////////////////////////////////////////////////////////////////
 
 	response := make(map[string]any)
 
@@ -775,36 +802,12 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		}
 
 		jsonKey := *NormalizeString(&command)
-		cmdBlock := map[string]any{
-			"id": id,
+
+		// Assigning our CommandBlock automatically wires the strict serialization output logic
+		response[jsonKey] = CommandBlock{
+			ID:      id,
+			Payload: payload,
 		}
-
-		// Unmarshal payload directly into the map if it exists
-		if payload != nil && *payload != "" {
-			var unmarshaledPayload any
-
-			// Detect if the inner payload string is a JSON array or object
-			if (*payload)[0] == '[' {
-				var slicePayload []any
-				if err := json.Unmarshal([]byte(*payload), &slicePayload); err == nil {
-					unmarshaledPayload = slicePayload
-				}
-			} else {
-				var mapPayload map[string]any
-				if err := json.Unmarshal([]byte(*payload), &mapPayload); err == nil {
-					unmarshaledPayload = mapPayload
-				}
-			}
-
-			if mapData, ok := unmarshaledPayload.(map[string]any); ok {
-				for k, v := range mapData {
-					cmdBlock[k] = v
-				}
-			} else if sliceData, ok := unmarshaledPayload.([]any); ok {
-				cmdBlock["sections"] = sliceData
-			}
-		}
-		response[jsonKey] = cmdBlock
 	}
 
 	// Commit transaction
