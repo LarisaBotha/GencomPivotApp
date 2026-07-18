@@ -83,6 +83,9 @@
             <!-- Start/Stop button -->
             <button 
                 x-data="{ 
+                    get bLoading() {
+                        return selectedPivot?.pending?.command ?? false;
+                    },
                     get command() { 
                         return selectedPivot?.status?.status.trim().toLowerCase() === 'running' ? 'Stop' : 'Start' 
                     } 
@@ -96,13 +99,19 @@
                             pivot_id: selectedPivot.id,
                         })
                     });
+                    if (response.ok){
+                        if(!selectedPivot.pending){
+                          selectedPivot.pending = {}
+                        }
+                        selectedPivot.pending['command'] = true;
+                    }
                 "
-                x-text="command"
                 :class="selectedPivot?.status?.status.trim().toLowerCase() === 'running' ? 'bg-red-500' : 'bg-blue-500'"
-                class="w-full text-white py-2 rounded text-lg font-bold cursor-pointer disabled:opacity-50 shadow-md"
-                :disabled="!selectedPivot">
+                class="w-full text-white py-2 rounded text-lg font-bold shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+                :disabled="!selectedPivot || bLoading">
+                <loading-spinner></loading-spinner>
+                <span x-text="command"></span>
             </button>
-
 
             <div 
                 x-data="{
@@ -247,8 +256,12 @@
                                     [key]: newValue
                                 })
                             });
-
-                            if (!res.ok) throw new Error('Server error');
+                            if (res.ok){
+                                if(!selectedPivot.pending){
+                                selectedPivot.pending = {}
+                                }
+                                selectedPivot.pending[key] = true;
+                            }
                             
                         } catch (err) {
                             this.selectedPivot.status[key] = oldValue;
@@ -258,34 +271,57 @@
                 x-effect="connectSSE()"
                 class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-5">
 
-                <div class="flex flex-col gap-1">
-                    <label class="text-xs font-bold text-gray-500 uppercase">Control</label>
+                <div 
+                    x-data="{
+                        get bLoading() {
+                            return selectedPivot?.pending?.wet ?? false;
+                        },
+                    }"
+                    class="flex flex-col gap-1">
+                    <label 
+                        class="inline-flex items-center gap-1 text-xs font-bold uppercase text-gray-500">
+                        <span>Control</span>
+                        <loading-spinner></loading-spinner>
+                    </label>
                     <div class="flex bg-gray-200 rounded p-1 shadow-inner h-10">
                         <button 
                             @click="toggleControl('wet', true)"
                             class="flex-1 rounded text-sm font-bold transition-all"
                             :class="selectedPivot?.status?.wet ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                            :disabled="bLoading"
                         >Wet</button>
                         <button 
                             @click="toggleControl('wet', false)"
                             class="flex-1 rounded text-sm font-bold transition-all"
                             :class="!selectedPivot?.status?.wet ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                            :disabled="bLoading"
                         >Dry</button>
                     </div>
                 </div>
 
-                <div class="flex flex-col gap-1">
-                    <label class="text-xs font-bold text-gray-500 uppercase">Direction</label>
+                <div 
+                    x-data="{
+                        get bLoading() {
+                            return selectedPivot?.pending?.direction ?? false;
+                        },
+                    }"
+                    class="flex flex-col gap-1">
+                     <label class="inline-flex items-center gap-1 text-xs font-bold uppercase text-gray-500">
+                        <span>Direction</span>
+                        <loading-spinner></loading-spinner>
+                    </label>
                     <div class="flex bg-gray-200 rounded p-1 shadow-inner h-10">
                         <button 
                             @click="toggleControl('direction', 'forward')"
                             class="flex-1 rounded text-sm font-bold transition-all"
                             :class="selectedPivot?.status?.direction == 'forward' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                            :disabled="bLoading"
                         >Forward</button>
                         <button 
                             @click="toggleControl('direction', 'reverse')"
                             class="flex-1 rounded text-sm font-bold transition-all"
                             :class="selectedPivot?.status?.direction == 'reverse' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500'"
+                            :disabled="bLoading"
                         >Reverse</button>
                     </div>
                 </div>

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"slices"
 	"time"
@@ -278,6 +279,12 @@ func notifyStatusUpdate(ctx context.Context, pivotID string) {
 
 func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 
+	// Handle Preflight
+	if r.Method == http.MethodOptions {
+		writeHeader(w, http.StatusOK)
+		return
+	}
+
 	pivotID := r.URL.Query().Get("pivot_id")
 	if pivotID == "" {
 		http.Error(w, "pivot_id required", http.StatusBadRequest)
@@ -292,7 +299,7 @@ func handlePivotStatus(w http.ResponseWriter, r *http.Request) {
 
 	subscriber := &Subscriber{
 		pivotID: pivotID,
-		send:    make(chan []byte),
+		send:    make(chan []byte, 10),
 	}
 
 	// Register client
@@ -731,11 +738,13 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure Sections still align
+	var sectionsMismatch bool
+
+	// Check if sections align (Do NOT update DB)
 	if body.Sections != nil {
 		sections := *body.Sections
 
-		// Sort the sections by their starting angle (0° -> 360°)
+		// Sort the incoming sections by their starting angle (0° -> 360°)
 		slices.SortFunc(sections, func(a, b SectionsSimplified) int {
 			if a.Start < b.Start {
 				return -1
@@ -746,25 +755,52 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 			return 0
 		})
 
-		for _, s := range sections {
-			_, err = tx.Exec(ctx, `
-            UPDATE pivot_sections
-            SET 
-                value = $1,
-                unit  = $2
-            WHERE pivot_id = $3 AND angle_deg = $4
-        `, s.Value, s.Unit, pivotID, s.Start)
+		// Fetch DB sections to compare
+		dbRows, err := tx.Query(ctx, `
+			SELECT angle_deg, value, unit 
+			FROM pivot_sections 
+			WHERE pivot_id = $1 
+			ORDER BY angle_deg ASC
+		`, pivotID)
 
-			if err != nil {
-				writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to sync section at angle %v: %v", s.Start, err))
-				return
+		if err == nil {
+			type dbSec struct {
+				Angle float64
+				Value float64
+				Unit  string
 			}
+			var dbSections []dbSec
+			for dbRows.Next() {
+				var s dbSec
+				if dbRows.Scan(&s.Angle, &s.Value, &s.Unit) == nil {
+					dbSections = append(dbSections, s)
+				}
+			}
+			dbRows.Close()
+
+			// Check for mismatches
+			if len(sections) != len(dbSections) {
+				sectionsMismatch = true
+			} else {
+				for i, s := range sections {
+					// Compare floats using a small epsilon to avoid strict equality bugs
+					if math.Abs(s.Start-dbSections[i].Angle) > 0.01 ||
+						math.Abs(s.Value-dbSections[i].Value) > 0.01 ||
+						s.Unit != dbSections[i].Unit {
+						sectionsMismatch = true
+						break
+					}
+				}
+			}
+		} else {
+			// If we fail to fetch, assume mismatch just in case
+			sectionsMismatch = true
 		}
 	}
 
 	// Fetch unacknowledged commands
 	rows, err := tx.Query(ctx, `
-            WITH latest_commands AS (
+        WITH latest_commands AS (
             SELECT DISTINCT ON (command) id
             FROM pivot_command_queue
             WHERE pivot_id = $1 AND acknowledged = FALSE
@@ -779,9 +815,13 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch commands: %v", err))
 		return
 	}
+
+	// We still defer rows.Close() just in case the function returns early on an error,
+	// but we will also manually close it below when we are done with it.
 	defer rows.Close()
 
 	response := make(map[string]any)
+	var hasUnackUpdate bool
 
 	subscribersMu.Lock()
 	if list, ok := subscribers[pivotID]; ok {
@@ -801,16 +841,46 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		jsonKey := *NormalizeString(&command)
+		if command == "Update" {
+			hasUnackUpdate = true
+		}
 
-		// Assigning our CommandBlock automatically wires the strict serialization output logic
+		jsonKey := *NormalizeString(&command)
 		response[jsonKey] = CommandBlock{
 			ID:      id,
 			Payload: payload,
 		}
 	}
 
-	// Commit transaction
+	// EXPLICITLY CLOSE rows here to free up the transaction connection
+	// for the next query and the commit.
+	rows.Close()
+
+	// If the pivot sent a bad state AND we aren't already trying to send it a new one...
+	if sectionsMismatch && !hasUnackUpdate {
+		var ackID int
+		var ackPayload *string
+
+		// Use QueryRow instead of Query. QueryRow automatically closes the row after scanning.
+		err := tx.QueryRow(ctx, `
+			SELECT id, payload
+			FROM pivot_command_queue
+			WHERE pivot_id = $1 AND command = 'Update' AND acknowledged = TRUE
+			ORDER BY created_at DESC
+			LIMIT 1
+		`, pivotID).Scan(&ackID, &ackPayload)
+
+		if err == nil {
+			cmdStr := "Update"
+			jsonKey := *NormalizeString(&cmdStr)
+			response[jsonKey] = CommandBlock{
+				ID:      ackID,
+				Payload: ackPayload,
+			}
+		}
+	}
+
+	// Commit transaction (connection is now free to commit safely)
 	if err := tx.Commit(ctx); err != nil {
 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to commit transaction: %v", err))
 		return
@@ -820,6 +890,174 @@ func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, response)
 }
+
+// func handleSyncPivot(w http.ResponseWriter, r *http.Request) {
+
+// 	// Preflight
+// 	if r.Method == http.MethodOptions {
+// 		writeHeader(w, http.StatusOK)
+// 		return
+// 	}
+
+// 	// Restrict to POST
+// 	if r.Method != http.MethodPost {
+// 		writeText(w, http.StatusMethodNotAllowed, "Method not allowed")
+// 		return
+// 	}
+
+// 	// Decode body
+// 	var body struct {
+// 		IMEI       string                `json:"imei"`
+// 		Position   *float64              `json:"position_deg"` // optional
+// 		Speed      *float64              `json:"speed_pct"`    // optional
+// 		Direction  *string               `json:"direction"`    // optional
+// 		Wet        *bool                 `json:"wet"`          // optional
+// 		Status     *string               `json:"status"`       // optional
+// 		BatteryPct *float64              `json:"battery_pct"`  // optional
+// 		Sections   *[]SectionsSimplified `json:"sections"`     // optional
+// 	}
+// 	if err := GetArguments(r, &body); err != nil {
+// 		log.Println("err ", err)
+// 		writeText(w, http.StatusBadRequest, "Invalid request body")
+// 		return
+// 	}
+
+// 	if body.IMEI == "" {
+// 		writeText(w, http.StatusBadRequest, "pivot imei required")
+// 		return
+// 	}
+
+// 	ctx := r.Context()
+
+// 	pivotID, err := getPivotIDByIMEI(ctx, body.IMEI)
+// 	if err != nil {
+// 		writeText(w, http.StatusBadRequest, "Invalid IMEI")
+// 		return
+// 	}
+
+// 	// Begin transaction
+// 	tx, err := DB.Begin(ctx)
+// 	if err != nil {
+// 		writeText(w, http.StatusInternalServerError, "Failed to start transaction")
+// 		return
+// 	}
+// 	defer tx.Rollback(ctx)
+
+// 	// Update pivot status
+// 	_, err = tx.Exec(ctx, `
+//         UPDATE pivot_status
+//         SET
+//             position_deg = COALESCE($1, position_deg),
+//             speed_pct    = COALESCE($2, speed_pct),
+//             direction    = COALESCE($3, direction),
+//             wet          = COALESCE($4, wet),
+//             status       = COALESCE($5, status),
+//             battery_pct  = COALESCE($6, battery_pct),
+//             updated_at   = NOW()
+//         WHERE pivot_id = $7
+//     `,
+// 		body.Position,
+// 		body.Speed,
+// 		NormalizeString(body.Direction),
+// 		body.Wet,
+// 		NormalizeString(body.Status),
+// 		body.BatteryPct,
+// 		pivotID,
+// 	)
+// 	if err != nil {
+// 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update status: %v", err))
+// 		return
+// 	}
+
+// 	// Ensure Sections still align
+// 	if body.Sections != nil {
+// 		sections := *body.Sections
+
+// 		// Sort the sections by their starting angle (0° -> 360°)
+// 		slices.SortFunc(sections, func(a, b SectionsSimplified) int {
+// 			if a.Start < b.Start {
+// 				return -1
+// 			}
+// 			if a.Start > b.Start {
+// 				return 1
+// 			}
+// 			return 0
+// 		})
+
+// 		for _, s := range sections {
+// 			_, err = tx.Exec(ctx, `
+//             UPDATE pivot_sections
+//             SET
+//                 value = $1,
+//                 unit  = $2
+//             WHERE pivot_id = $3 AND angle_deg = $4
+//         `, s.Value, s.Unit, pivotID, s.Start)
+
+// 			if err != nil {
+// 				writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to sync section at angle %v: %v", s.Start, err))
+// 				return
+// 			}
+// 		}
+// 	}
+
+// 	// Fetch unacknowledged commands
+// 	rows, err := tx.Query(ctx, `
+//             WITH latest_commands AS (
+//             SELECT DISTINCT ON (command) id
+//             FROM pivot_command_queue
+//             WHERE pivot_id = $1 AND acknowledged = FALSE
+//             ORDER BY command, created_at DESC
+//         )
+//         SELECT q.id, q.command, q.payload
+//         FROM pivot_command_queue q
+//         JOIN latest_commands lc ON q.id = lc.id
+//         FOR UPDATE
+//     `, pivotID)
+// 	if err != nil {
+// 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch commands: %v", err))
+// 		return
+// 	}
+// 	defer rows.Close()
+
+// 	response := make(map[string]any)
+
+// 	subscribersMu.Lock()
+// 	if list, ok := subscribers[pivotID]; ok {
+// 		response["connections"] = len(list)
+// 	} else {
+// 		response["connections"] = 0
+// 	}
+// 	subscribersMu.Unlock()
+
+// 	for rows.Next() {
+// 		var id int
+// 		var command string
+// 		var payload *string
+
+// 		if err := rows.Scan(&id, &command, &payload); err != nil {
+// 			writeText(w, http.StatusInternalServerError, fmt.Sprintf("Scan error: %v", err))
+// 			return
+// 		}
+
+// 		jsonKey := *NormalizeString(&command)
+
+// 		// Assigning our CommandBlock automatically wires the strict serialization output logic
+// 		response[jsonKey] = CommandBlock{
+// 			ID:      id,
+// 			Payload: payload,
+// 		}
+// 	}
+
+// 	// Commit transaction
+// 	if err := tx.Commit(ctx); err != nil {
+// 		writeText(w, http.StatusInternalServerError, fmt.Sprintf("Failed to commit transaction: %v", err))
+// 		return
+// 	}
+
+// 	go notifyStatusUpdate(context.Background(), pivotID)
+
+// 	writeJSON(w, http.StatusOK, response)
+// }
 
 func handleGetSubscriberCount(w http.ResponseWriter, r *http.Request) {
 
