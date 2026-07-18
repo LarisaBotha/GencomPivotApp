@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+@layer base {
+  button {
+    @apply transition-all duration-150 ease-out;
+  }
+
+  button:active {
+    @apply translate-y-0.5 brightness-75;
+  }
+
+}

@@ -31,6 +31,5 @@
 - interpret error and offline pivot status
 - make toggle component
 
-- button click animation
 - push notifications
 - modernise ui

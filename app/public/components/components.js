@@ -108,3 +108,25 @@ class SectionEditModal extends HTMLElement {
 }
 
 customElements.define('section-edit-modal', SectionEditModal);
+
+class Spinner extends HTMLElement {
+  constructor() {
+    super();
+  }
+
+  async connectedCallback() {
+    const filePath = '/components/spinner.html';
+
+    try {
+      const response = await fetch(filePath);
+      const html = await response.text();
+      
+      this.outerHTML = html;
+      
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  }
+}
+
+customElements.define('loading-spinner', Spinner);
